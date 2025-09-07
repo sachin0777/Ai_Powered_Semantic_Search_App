@@ -12,8 +12,8 @@ const EnhancedSemanticSearchApp = () => {
   const [serverStatus, setServerStatus] = useState('checking');
   const [searchContext, setSearchContext] = useState(null);
 
-  // API Base URL - Change this to your backend URL
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+  // Updated API Base URL - Change this to your deployed Vercel URL
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ;
 
   // Check server status on component mount
   useEffect(() => {
@@ -22,7 +22,12 @@ const EnhancedSemanticSearchApp = () => {
 
   const checkServerStatus = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/health`);
+      const response = await fetch(`${API_BASE_URL}/health`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
       if (response.ok) {
         const data = await response.json();
         setServerStatus('online');
@@ -30,10 +35,12 @@ const EnhancedSemanticSearchApp = () => {
         console.log('Server status:', data);
       } else {
         setServerStatus('offline');
+        setError(`Server responded with status ${response.status}. Please check your backend deployment.`);
       }
     } catch (error) {
       setServerStatus('offline');
-      setError('Cannot connect to search server. Please make sure the backend is running on port 5000.');
+      setError('Cannot connect to search server. Please make sure your backend is deployed and the URL is correct.');
+      console.error('Server connection error:', error);
     }
   };
 
@@ -78,7 +85,16 @@ const EnhancedSemanticSearchApp = () => {
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const timeoutId = setTimeout(() => controller.abort(), 45000); // Increased timeout for serverless functions
+
+      const requestBody = {
+        query: searchQuery.trim(),
+        contentTypes: selectedContentTypes.length > 0 ? selectedContentTypes : undefined,
+        locales: selectedLocales.length > 0 ? selectedLocales : undefined,
+      };
+
+      console.log('Making search request to:', `${API_BASE_URL}/search`);
+      console.log('Request body:', requestBody);
 
       const response = await fetch(`${API_BASE_URL}/search`, {
         method: 'POST',
@@ -86,15 +102,13 @@ const EnhancedSemanticSearchApp = () => {
           'Content-Type': 'application/json',
           'Accept': 'application/json'
         },
-        body: JSON.stringify({
-          query: searchQuery.trim(),
-          contentTypes: selectedContentTypes.length > 0 ? selectedContentTypes : undefined,
-          locales: selectedLocales.length > 0 ? selectedLocales : undefined,
-        }),
+        body: JSON.stringify(requestBody),
         signal: controller.signal
       });
 
       clearTimeout(timeoutId);
+
+      console.log('Response status:', response.status);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Server error' }));
@@ -102,6 +116,7 @@ const EnhancedSemanticSearchApp = () => {
       }
 
       const data = await response.json();
+      console.log('Search response:', data);
       
       if (!data || !Array.isArray(data.results)) {
         throw new Error('Invalid response format from server');
@@ -118,9 +133,9 @@ const EnhancedSemanticSearchApp = () => {
       console.error('Search failed:', searchError);
       
       if (searchError.name === 'AbortError') {
-        setError('Search request timed out. Please try again.');
-      } else if (searchError.message.includes('fetch')) {
-        setError('Cannot connect to search server. Please make sure the backend is running.');
+        setError('Search request timed out. Serverless functions may take longer to respond on first request.');
+      } else if (searchError.message.includes('fetch') || searchError.message.includes('NetworkError')) {
+        setError('Cannot connect to search server. Please verify your backend URL and deployment status.');
         setServerStatus('offline');
       } else {
         setError(searchError.message || 'Search failed. Please try again.');
@@ -252,12 +267,17 @@ const EnhancedSemanticSearchApp = () => {
             <div>
               <p className="text-sm text-red-700">{error}</p>
               {serverStatus === 'offline' && (
-                <button 
-                  onClick={checkServerStatus}
-                  className="mt-2 text-xs text-red-600 hover:text-red-800 underline"
-                >
-                  Retry connection
-                </button>
+                <div className="mt-2 space-y-1">
+                  <button 
+                    onClick={checkServerStatus}
+                    className="text-xs text-red-600 hover:text-red-800 underline block"
+                  >
+                    Retry connection
+                  </button>
+                  <p className="text-xs text-red-600">
+                    Current backend URL: {API_BASE_URL}
+                  </p>
+                </div>
               )}
             </div>
             <button 
@@ -398,6 +418,14 @@ const EnhancedSemanticSearchApp = () => {
                   ))}
                 </div>
               </div>
+
+              {/* Backend URL Display */}
+              <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">Backend URL:</span>
+                  <span className="text-xs font-mono text-gray-800">{API_BASE_URL}</span>
+                </div>
+              </div>
             </div>
 
             {/* Results Section */}
@@ -433,6 +461,7 @@ const EnhancedSemanticSearchApp = () => {
                     <div className="flex flex-col items-center justify-center space-y-4">
                       <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent"></div>
                       <p className="text-gray-500">Analyzing content with multimodal AI...</p>
+                      <p className="text-xs text-gray-400">First request may take longer on serverless functions</p>
                     </div>
                   </div>
                 ) : searchResults.length > 0 ? (

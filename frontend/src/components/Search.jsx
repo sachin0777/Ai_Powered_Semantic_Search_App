@@ -1,7 +1,30 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Settings, FileText, Image, Video, Star, Calendar, Brain, Target, Zap, TrendingUp, AlertCircle, Wifi, WifiOff, Eye, ImageIcon, Sparkles, ExternalLink, Tag } from 'lucide-react';
+import { 
+  Search, 
+  Filter, 
+  Settings, 
+  FileText, 
+  Image, 
+  Video, 
+  Star, 
+  Calendar, 
+  Brain, 
+  Target, 
+  Zap, 
+  TrendingUp, 
+  AlertCircle, 
+  Wifi, 
+  WifiOff, 
+  Eye, 
+  ImageIcon, 
+  Sparkles, 
+  ExternalLink, 
+  Tag,
+  Loader2
+} from 'lucide-react';
 
-const EnhancedSemanticSearchApp = () => {
+const EnhancedSemanticSearch = () => {
+  // State management
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [selectedContentTypes, setSelectedContentTypes] = useState([]);
@@ -12,30 +35,8 @@ const EnhancedSemanticSearchApp = () => {
   const [serverStatus, setServerStatus] = useState('checking');
   const [searchContext, setSearchContext] = useState(null);
 
-  // API Base URL - Change this to your backend URL
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
-
-  // Check server status on component mount
-  useEffect(() => {
-    checkServerStatus();
-  }, []);
-
-  const checkServerStatus = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/health`);
-      if (response.ok) {
-        const data = await response.json();
-        setServerStatus('online');
-        setError(null);
-        console.log('Server status:', data);
-      } else {
-        setServerStatus('offline');
-      }
-    } catch (error) {
-      setServerStatus('offline');
-      setError('Cannot connect to search server. Please make sure the backend is running on port 5000.');
-    }
-  };
+  // Configuration
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
   const contentTypes = [
     { id: 'article', name: 'Articles', icon: FileText, count: 245 },
@@ -61,6 +62,38 @@ const EnhancedSemanticSearchApp = () => {
     'green bottle with label'
   ];
 
+  // Effects
+  useEffect(() => {
+    checkServerStatus();
+  }, []);
+
+  // Server status check
+  const checkServerStatus = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/health`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setServerStatus('online');
+        setError(null);
+        console.log('Server status:', data);
+      } else {
+        setServerStatus('offline');
+        setError(`Server responded with status ${response.status}. Please check your backend deployment.`);
+      }
+    } catch (error) {
+      setServerStatus('offline');
+      setError('Cannot connect to search server. Please make sure your backend is deployed and accessible.');
+      console.error('Server connection error:', error);
+    }
+  };
+
+  // Search functionality
   const handleSearch = async () => {
     if (!searchQuery.trim()) {
       setError('Please enter a search query');
@@ -78,7 +111,16 @@ const EnhancedSemanticSearchApp = () => {
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const timeoutId = setTimeout(() => controller.abort(), 45000); // Increased timeout for serverless
+
+      const requestBody = {
+        query: searchQuery.trim(),
+        contentTypes: selectedContentTypes.length > 0 ? selectedContentTypes : undefined,
+        locales: selectedLocales.length > 0 ? selectedLocales : undefined,
+      };
+
+      console.log('Making search request to:', `${API_BASE_URL}/search`);
+      console.log('Request body:', requestBody);
 
       const response = await fetch(`${API_BASE_URL}/search`, {
         method: 'POST',
@@ -86,11 +128,7 @@ const EnhancedSemanticSearchApp = () => {
           'Content-Type': 'application/json',
           'Accept': 'application/json'
         },
-        body: JSON.stringify({
-          query: searchQuery.trim(),
-          contentTypes: selectedContentTypes.length > 0 ? selectedContentTypes : undefined,
-          locales: selectedLocales.length > 0 ? selectedLocales : undefined,
-        }),
+        body: JSON.stringify(requestBody),
         signal: controller.signal
       });
 
@@ -102,6 +140,7 @@ const EnhancedSemanticSearchApp = () => {
       }
 
       const data = await response.json();
+      console.log('Search response:', data);
       
       if (!data || !Array.isArray(data.results)) {
         throw new Error('Invalid response format from server');
@@ -118,9 +157,9 @@ const EnhancedSemanticSearchApp = () => {
       console.error('Search failed:', searchError);
       
       if (searchError.name === 'AbortError') {
-        setError('Search request timed out. Please try again.');
-      } else if (searchError.message.includes('fetch')) {
-        setError('Cannot connect to search server. Please make sure the backend is running.');
+        setError('Search request timed out. Serverless functions may take longer on first request.');
+      } else if (searchError.message.includes('fetch') || searchError.message.includes('NetworkError')) {
+        setError('Cannot connect to search server. Please verify your backend URL and deployment status.');
         setServerStatus('offline');
       } else {
         setError(searchError.message || 'Search failed. Please try again.');
@@ -132,6 +171,7 @@ const EnhancedSemanticSearchApp = () => {
     }
   };
 
+  // Event handlers
   const handleKeyPress = (e) => {
     if (e.key === 'Enter') {
       handleSearch();
@@ -154,6 +194,12 @@ const EnhancedSemanticSearchApp = () => {
     );
   };
 
+  const handleExampleClick = (example) => {
+    setSearchQuery(example);
+    setError(null);
+  };
+
+  // Utility functions
   const getSimilarityColor = (score) => {
     if (score >= 0.9) return 'text-green-600 bg-green-50';
     if (score >= 0.8) return 'text-blue-600 bg-blue-50';
@@ -166,27 +212,18 @@ const EnhancedSemanticSearchApp = () => {
     return contentType ? contentType.icon : FileText;
   };
 
-  const handleExampleClick = (example) => {
-    setSearchQuery(example);
-    setError(null);
-  };
-
-  // Enhanced helper function to ensure image URL is absolute and valid
   const getFullImageUrl = (imageUrl) => {
     if (!imageUrl) return null;
     
     try {
-      // If it's already a full HTTP/HTTPS URL, return as is
       if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
         return imageUrl;
       }
       
-      // If it starts with //, add https:
       if (imageUrl.startsWith('//')) {
         return `https:${imageUrl}`;
       }
       
-      // If it contains contentstack.io but doesn't start with protocol, add https://
       if (imageUrl.includes('contentstack.io')) {
         return `https://${imageUrl}`;
       }
@@ -198,36 +235,17 @@ const EnhancedSemanticSearchApp = () => {
     }
   };
 
-  // Helper function to format price
   const formatPrice = (price) => {
     if (!price) return null;
     return `$${parseFloat(price).toFixed(2)}`;
   };
 
-  // Helper function to format duration
   const formatDuration = (duration) => {
     if (!duration) return null;
     return `${duration} min`;
   };
 
-  // Enhanced image error handling
-  const handleImageError = (e, result) => {
-    console.warn('Image failed to load:', e.target.src, 'for result:', result.title);
-    e.target.style.display = 'none';
-    
-    // Try to find alternative image if available
-    const alternativeImages = result.allImages || result.all_images;
-    if (alternativeImages && alternativeImages.length > 1) {
-      const currentSrc = e.target.src;
-      const currentIndex = alternativeImages.findIndex(img => getFullImageUrl(img) === currentSrc);
-      if (currentIndex !== -1 && currentIndex < alternativeImages.length - 1) {
-        e.target.src = getFullImageUrl(alternativeImages[currentIndex + 1]);
-        e.target.style.display = 'block';
-      }
-    }
-  };
-
-  // Enhanced image component with loading state
+  // Image component with fallback
   const ImageWithFallback = ({ src, alt, className, result }) => {
     const [isLoading, setIsLoading] = useState(true);
     const [hasError, setHasError] = useState(false);
@@ -237,10 +255,9 @@ const EnhancedSemanticSearchApp = () => {
       setHasError(false);
     };
 
-    const handleError = (e) => {
+    const handleError = () => {
       setIsLoading(false);
       setHasError(true);
-      handleImageError(e, result);
     };
 
     if (!src) return null;
@@ -249,7 +266,7 @@ const EnhancedSemanticSearchApp = () => {
       <div className={`relative ${className}`}>
         {isLoading && (
           <div className={`absolute inset-0 bg-gray-100 rounded-lg flex items-center justify-center ${className}`}>
-            <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-600 border-t-transparent"></div>
+            <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
           </div>
         )}
         <img 
@@ -291,7 +308,6 @@ const EnhancedSemanticSearchApp = () => {
               </div>
             </div>
             <div className="flex items-center space-x-3">
-              {/* Server Status Indicator */}
               <div className="flex items-center space-x-2">
                 {serverStatus === 'online' ? (
                   <div className="flex items-center space-x-1 text-green-600">
@@ -305,13 +321,13 @@ const EnhancedSemanticSearchApp = () => {
                   </div>
                 ) : (
                   <div className="flex items-center space-x-1 text-yellow-600">
-                    <div className="w-4 h-4 animate-spin border border-yellow-600 border-t-transparent rounded-full"></div>
+                    <Loader2 className="w-4 h-4 animate-spin" />
                     <span className="text-xs">Checking...</span>
                   </div>
                 )}
               </div>
               <button 
-                onClick={() => checkServerStatus()}
+                onClick={checkServerStatus}
                 className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                 title="Refresh server status"
               >
@@ -327,20 +343,23 @@ const EnhancedSemanticSearchApp = () => {
         <div className="bg-red-50 border-l-4 border-red-400 p-4 mx-6 mt-4 rounded-r-lg">
           <div className="flex items-center">
             <AlertCircle className="w-5 h-5 text-red-400 mr-3" />
-            <div>
+            <div className="flex-1">
               <p className="text-sm text-red-700">{error}</p>
               {serverStatus === 'offline' && (
-                <button 
-                  onClick={checkServerStatus}
-                  className="mt-2 text-xs text-red-600 hover:text-red-800 underline"
-                >
-                  Retry connection
-                </button>
+                <div className="mt-2 space-y-1">
+                  <button 
+                    onClick={checkServerStatus}
+                    className="text-xs text-red-600 hover:text-red-800 underline block"
+                  >
+                    Retry connection
+                  </button>
+                  <p className="text-xs text-red-600">Backend URL: {API_BASE_URL}</p>
+                </div>
               )}
             </div>
             <button 
               onClick={() => setError(null)}
-              className="ml-auto text-red-400 hover:text-red-600"
+              className="ml-auto text-red-400 hover:text-red-600 text-xl font-bold px-2"
             >
               ×
             </button>
@@ -348,7 +367,7 @@ const EnhancedSemanticSearchApp = () => {
         </div>
       )}
 
-      {/* Enhanced Search Context Banner */}
+      {/* Search Context Banner */}
       {searchContext && showResults && (
         <div className={`mx-6 mt-4 p-4 rounded-lg ${
           searchContext.isVisualQuery 
@@ -380,8 +399,8 @@ const EnhancedSemanticSearchApp = () => {
               </p>
               {searchContext.matchedVisualKeywords && searchContext.matchedVisualKeywords.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1">
-                  {searchContext.matchedVisualKeywords.slice(0, 5).map((keyword, keywordIdx) => (
-                    <span key={keywordIdx} className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-700">
+                  {searchContext.matchedVisualKeywords.slice(0, 5).map((keyword, idx) => (
+                    <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-700">
                       {keyword}
                     </span>
                   ))}
@@ -437,7 +456,7 @@ const EnhancedSemanticSearchApp = () => {
                   }`}>
                     {isSearching ? (
                       <div className="flex items-center space-x-2">
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        <Loader2 className="w-4 h-4 animate-spin" />
                         <span>Searching...</span>
                       </div>
                     ) : (
@@ -465,9 +484,9 @@ const EnhancedSemanticSearchApp = () => {
                   Try these visual search examples:
                 </h4>
                 <div className="flex flex-wrap gap-2">
-                  {visualSearchExamples.map((example, exampleIdx) => (
+                  {visualSearchExamples.map((example, idx) => (
                     <button
-                      key={exampleIdx}
+                      key={idx}
                       onClick={() => handleExampleClick(example)}
                       className="px-3 py-1 text-xs bg-white border border-purple-200 rounded-full hover:bg-purple-50 hover:border-purple-300 transition-colors"
                     >
@@ -509,8 +528,9 @@ const EnhancedSemanticSearchApp = () => {
                 {isSearching ? (
                   <div className="p-8">
                     <div className="flex flex-col items-center justify-center space-y-4">
-                      <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent"></div>
+                      <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
                       <p className="text-gray-500">Analyzing content with multimodal AI...</p>
+                      <p className="text-xs text-gray-400">First request may take longer on serverless functions</p>
                     </div>
                   </div>
                 ) : searchResults.length > 0 ? (
@@ -554,7 +574,7 @@ const EnhancedSemanticSearchApp = () => {
                                 )}
                               </div>
                               
-                              {/* Enhanced Image Display Section */}
+                              {/* Image Display */}
                               {primaryImage && (
                                 <div className="mb-4">
                                   <div className="flex items-start space-x-3">
@@ -573,7 +593,7 @@ const EnhancedSemanticSearchApp = () => {
                                       )}
                                     </div>
                                     
-                                    {/* Additional images thumbnail grid */}
+                                    {/* Additional images */}
                                     {allImages && allImages.length > 1 && (
                                       <div className="flex flex-col space-y-2">
                                         <div className="text-xs text-gray-500 mb-1">
@@ -599,7 +619,7 @@ const EnhancedSemanticSearchApp = () => {
                                     )}
                                   </div>
                                   
-                                  {/* Show AI image analysis if available */}
+                                  {/* AI image analysis */}
                                   {result.imageAnalysis && (
                                     <div className="mt-3 p-3 bg-yellow-50 rounded-lg border-l-4 border-yellow-400">
                                       <div className="flex items-start space-x-2">
@@ -618,7 +638,7 @@ const EnhancedSemanticSearchApp = () => {
                                 {result.snippet}
                               </p>
                               
-                              {/* Enhanced metadata display */}
+                              {/* Metadata */}
                               <div className="flex items-center space-x-4 text-sm text-gray-500 flex-wrap gap-y-1">
                                 <span className="capitalize">{result.contentType || result.type}</span>
                                 <span>•</span>
@@ -656,7 +676,7 @@ const EnhancedSemanticSearchApp = () => {
                                     <span key={tagIdx} className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-800 hover:bg-gray-200 cursor-pointer">
                                       {tag}
                                     </span>
-                                  ))}
+                                  )                                  )}
                                   {result.tags.length > 4 && (
                                     <span className="text-xs text-gray-500">+{result.tags.length - 4} more</span>
                                   )}
@@ -733,7 +753,7 @@ const EnhancedSemanticSearchApp = () => {
             )}
           </div>
 
-          {/* Enhanced Filters Sidebar */}
+          {/* Filters Sidebar */}
           <div className="lg:col-span-1">
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sticky top-24">
               <div className="flex items-center space-x-2 mb-6">
@@ -787,7 +807,7 @@ const EnhancedSemanticSearchApp = () => {
                 </div>
               </div>
 
-              {/* Enhanced Features Info */}
+              {/* AI Features Info */}
               <div className="mb-6 p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg">
                 <h4 className="text-sm font-medium text-gray-900 mb-2 flex items-center">
                   <Sparkles className="w-4 h-4 mr-2 text-purple-600" />
@@ -852,4 +872,4 @@ const EnhancedSemanticSearchApp = () => {
   );
 };
 
-export default EnhancedSemanticSearchApp;
+export default EnhancedSemanticSearch;
