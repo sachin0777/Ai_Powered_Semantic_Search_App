@@ -1,0 +1,21 @@
+High level plan — modules
+
+Project & Dev Setup — repo structure, dev servers, proxy, env files. (Immediate)
+
+Mock API + Frontend integration — a simple Express mock to exercise the UI and define the API contract. (Immediate)
+
+Embeddings + Vector DB (index & search) — choose provider (OpenAI/Cohere + Pinecone/Weaviate/FAISS), embedding pipeline, vector index design.
+
+CMS (Contentstack) sync & webhooks — configure webhooks, incremental sync, delete/update handling.
+
+Indexing pipeline & workers — scalable jobs to compute embeddings, batch updates, retry logic.
+
+Production API layer — secure search API, auth, rate limits, pagination, multi-locale/content type filtering.
+
+Frontend search UX & behavior — debounced queries, loading states, filters, pagination, accessibility, polishing.
+
+Deploy & scale — hosting options for API/vector DB, cost/latency tradeoffs.
+
+Monitoring, observability & QA — logs, metrics, synthetic tests, monitoring webhooks and vector index health.
+
+Marketplace App / Launch — package UI for Contentstack Launch with their SDK and hosting.
