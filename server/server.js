@@ -642,8 +642,8 @@ app.use((req, res) => {
 export default app;
 
 // Only listen on port in development/local
-const PORT = process.env.PORT || 5000;
 if (process.env.NODE_ENV !== 'production') {
+  const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`);
     console.log(`📊 Health check available at: http://localhost:${PORT}/health`);
