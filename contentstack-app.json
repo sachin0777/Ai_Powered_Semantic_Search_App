@@ -1,0 +1,76 @@
+{
+  "name": "AI-Powered Semantic Search",
+  "description": "Smart embeddings-based search that understands the meaning behind queries and returns relevant content using semantic similarity",
+  "version": "1.0.0",
+  "icon": "extension-icon.svg",
+  "target_type": "stack",
+  "scope": "admin",
+  "framework": {
+    "type": "react",
+    "version": "18.2.0"
+  },
+  "config": {
+    "signed_request_enabled": true,
+    "cors_enabled": true,
+    "allowed_origins": ["https://app.contentstack.com", "https://eu-app.contentstack.com"],
+    "webhooks_enabled": true,
+    "auto_sync": true
+  },
+  "ui_locations": [
+    {
+      "type": "stack_dashboard",
+      "meta": [
+        {
+          "path": "/semantic-search",
+          "data_type": "reference",
+          "extension_uid": "semantic_search_app"
+        }
+      ]
+    }
+  ],
+  "webhooks": [
+    {
+      "target_url": "https://ai-powered-semantic-search-app.vercel.app/api/webhook/contentstack",
+      "actions": ["publish", "unpublish", "delete"],
+      "branches": ["main"],
+      "retry": {
+        "max": 5,
+        "delay": 1000
+      }
+    }
+  ],
+  "oauth": {
+    "redirect_uri": "https://ai-powered-semantic-search-app.vercel.app/auth/callback",
+    "enable_sso": true
+  },
+  "installation_parameters": {
+    "cohere_api_key": {
+      "display_name": "Cohere API Key",
+      "instruction": "Enter your Cohere API key for generating embeddings",
+      "type": "singleline",
+      "required": true,
+      "secure": true
+    },
+    "pinecone_api_key": {
+      "display_name": "Pinecone API Key", 
+      "instruction": "Enter your Pinecone API key for vector database",
+      "type": "singleline",
+      "required": true,
+      "secure": true
+    },
+    "pinecone_index": {
+      "display_name": "Pinecone Index Name",
+      "instruction": "Enter your Pinecone index name",
+      "type": "singleline",
+      "required": true,
+      "default": "semantic-search-demo"
+    },
+    "openai_api_key": {
+      "display_name": "OpenAI API Key",
+      "instruction": "Enter your OpenAI API key for advanced processing",
+      "type": "singleline",
+      "required": false,
+      "secure": true
+    }
+  }
+}

@@ -641,6 +641,161 @@ app.use((req, res) => {
 // Export the app for Vercel
 export default app;
 
+
+// Add this to your backend/server.js or create as separate file and import
+
+// Webhook handler for Contentstack content changes
+app.post('/api/webhook/contentstack', async (req, res) => {
+  try {
+    console.log('Received Contentstack webhook:', req.body);
+    
+    const { event, data } = req.body;
+    
+    if (!event || !data) {
+      return res.status(400).json({ error: 'Invalid webhook payload' });
+    }
+
+    const entryData = data.entry || data;
+    const contentType = entryData.content_type_uid || entryData.content_type;
+    const entryUid = entryData.uid;
+    const locale = entryData.locale || 'en-us';
+
+    console.log(`Webhook event: ${event} for content type: ${contentType}, entry: ${entryUid}`);
+
+    switch (event) {
+      case 'entry.publish':
+      case 'entry.update':
+        // Re-index the updated entry
+        await reindexEntry(entryData, contentType, locale);
+        break;
+        
+      case 'entry.unpublish':
+      case 'entry.delete':
+        // Remove from index
+        await removeFromIndex(entryUid, contentType);
+        break;
+        
+      default:
+        console.log(`Unhandled webhook event: ${event}`);
+    }
+
+    res.status(200).json({ success: true, message: 'Webhook processed successfully' });
+  } catch (error) {
+    console.error('Webhook processing error:', error);
+    res.status(500).json({ error: 'Webhook processing failed', details: error.message });
+  }
+});
+
+// Helper function to reindex a single entry
+async function reindexEntry(entryData, contentType, locale) {
+  try {
+    // Extract content for embedding
+    const content = extractContentFromEntry(entryData, contentType);
+    
+    if (!content || content.trim().length === 0) {
+      console.log(`No content to index for entry ${entryData.uid}`);
+      return;
+    }
+
+    // Generate embedding
+    const embedding = await generateEmbedding(content);
+    
+    // Prepare metadata
+    const metadata = {
+      id: entryData.uid,
+      contentType: contentType,
+      title: entryData.title || entryData.name || 'Untitled',
+      locale: locale,
+      lastModified: new Date().toISOString(),
+      snippet: content.substring(0, 300),
+      url: entryData.url || `#${entryData.uid}`,
+      // Add any other relevant metadata
+      tags: entryData.tags || [],
+      category: entryData.category || contentType
+    };
+
+    // Handle images if present
+    if (entryData.images || entryData.image || entryData.featured_image) {
+      const images = extractImages(entryData);
+      if (images.length > 0) {
+        metadata.primaryImage = images[0];
+        metadata.allImages = images;
+        metadata.imageCount = images.length;
+        metadata.hasImages = true;
+      }
+    }
+
+    // Update in Pinecone
+    const vectorId = `${entryData.uid}_${locale}`;
+    await index.upsert([{
+      id: vectorId,
+      values: embedding,
+      metadata: metadata
+    }]);
+
+    console.log(`Successfully reindexed entry: ${entryData.uid}`);
+  } catch (error) {
+    console.error(`Failed to reindex entry ${entryData.uid}:`, error);
+    throw error;
+  }
+}
+
+// Helper function to remove entry from index
+async function removeFromIndex(entryUid, contentType) {
+  try {
+    // Remove all locales of this entry
+    const vectorIds = [`${entryUid}_en-us`, `${entryUid}_es-es`, `${entryUid}_fr-fr`, `${entryUid}_de-de`];
+    
+    await index.deleteMany(vectorIds);
+    console.log(`Successfully removed entry from index: ${entryUid}`);
+  } catch (error) {
+    console.error(`Failed to remove entry ${entryUid} from index:`, error);
+    throw error;
+  }
+}
+
+// Helper function to extract images from entry
+function extractImages(entry) {
+  const images = [];
+  
+  // Check various possible image fields
+  const imageFields = ['images', 'image', 'featured_image', 'banner_image', 'gallery'];
+  
+  imageFields.forEach(field => {
+    if (entry[field]) {
+      if (Array.isArray(entry[field])) {
+        entry[field].forEach(img => {
+          if (img.url) images.push(img.url);
+          if (img.href) images.push(img.href);
+        });
+      } else if (typeof entry[field] === 'object' && entry[field].url) {
+        images.push(entry[field].url);
+      } else if (typeof entry[field] === 'string') {
+        images.push(entry[field]);
+      }
+    }
+  });
+
+  return images.filter(url => url && url.trim().length > 0);
+}
+
+// Add webhook verification middleware (optional but recommended)
+app.use('/api/webhook/contentstack', (req, res, next) => {
+  // Verify webhook signature if Contentstack provides one
+  // This is optional but recommended for security
+  const signature = req.headers['x-contentstack-signature'];
+  
+  if (signature) {
+    // Implement signature verification here
+    // const expectedSignature = generateSignature(req.body, webhookSecret);
+    // if (signature !== expectedSignature) {
+    //   return res.status(401).json({ error: 'Invalid webhook signature' });
+    // }
+  }
+  
+  next();
+});
+
 // Only listen on port in development/local
 if (process.env.NODE_ENV !== 'production') {
   const PORT = process.env.PORT || 5000;

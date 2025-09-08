@@ -1,0 +1,45 @@
+{
+  "name": "ai-semantic-search",
+  "type": "marketplace-app",
+  "framework": "react",
+  "build": {
+    "command": "npm run build",
+    "directory": "dist",
+    "environment": {
+      "NODE_VERSION": "18",
+      "NPM_VERSION": "9"
+    }
+  },
+  "routes": [
+    {
+      "path": "/semantic-search",
+      "component": "index.html"
+    },
+    {
+      "path": "/semantic-search/*",
+      "component": "index.html"
+    }
+  ],
+  "static": {
+    "directory": "dist/assets"
+  },
+  "headers": {
+    "/*": {
+      "X-Frame-Options": "SAMEORIGIN",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "strict-origin-when-cross-origin"
+    },
+    "/assets/*": {
+      "Cache-Control": "public, max-age=31536000, immutable"
+    }
+  },
+  "redirects": [
+    {
+      "from": "/",
+      "to": "/semantic-search",
+      "status": 302
+    }
+  ],
+  "environment": "production",
+  "region": "us-east-1"
+}

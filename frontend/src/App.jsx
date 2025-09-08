@@ -1,7 +1,30 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Settings, FileText, Image, Video, Star, Calendar, Brain, Target, Zap, TrendingUp, AlertCircle, Wifi, WifiOff, Eye, ImageIcon, Sparkles, ExternalLink, Tag } from 'lucide-react';
+import { 
+  Search, 
+  Filter, 
+  Settings, 
+  FileText, 
+  Image, 
+  Video, 
+  Star, 
+  Calendar, 
+  Brain, 
+  Target, 
+  Zap, 
+  TrendingUp, 
+  AlertCircle, 
+  Wifi, 
+  WifiOff, 
+  Eye, 
+  ImageIcon, 
+  Sparkles, 
+  ExternalLink, 
+  Tag,
+  Loader2
+} from 'lucide-react';
 
-const EnhancedSemanticSearchApp = () => {
+const EnhancedSemanticSearch = () => {
+  // State management
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [selectedContentTypes, setSelectedContentTypes] = useState([]);
@@ -11,38 +34,42 @@ const EnhancedSemanticSearchApp = () => {
   const [error, setError] = useState(null);
   const [serverStatus, setServerStatus] = useState('checking');
   const [searchContext, setSearchContext] = useState(null);
+  const [extensionConfig, setExtensionConfig] = useState(null);
+  const [isContentstackApp, setIsContentstackApp] = useState(false);
 
-  // Updated API Base URL - Change this to your deployed Vercel URL
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ;
-
-  // Check server status on component mount
+  // Initialize Contentstack extension if available
   useEffect(() => {
-    checkServerStatus();
+    if (window.ContentstackUIExtension) {
+      setIsContentstackApp(true);
+      window.ContentstackUIExtension.init().then((extension) => {
+        console.log('Contentstack extension initialized:', extension);
+        
+        // Get app configuration
+        extension.getConfig().then((config) => {
+          console.log('App config:', config);
+          setExtensionConfig(config);
+        }).catch((err) => {
+          console.warn('Failed to get app config:', err);
+        });
+
+        // Set frame height
+        extension.frame.updateHeight(window.innerHeight);
+        
+        // Listen for resize events
+        window.addEventListener('resize', () => {
+          extension.frame.updateHeight(window.innerHeight);
+        });
+      }).catch((err) => {
+        console.warn('Failed to initialize Contentstack extension:', err);
+        setIsContentstackApp(false);
+      });
+    }
   }, []);
 
-  const checkServerStatus = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/health`, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-        },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setServerStatus('online');
-        setError(null);
-        console.log('Server status:', data);
-      } else {
-        setServerStatus('offline');
-        setError(`Server responded with status ${response.status}. Please check your backend deployment.`);
-      }
-    } catch (error) {
-      setServerStatus('offline');
-      setError('Cannot connect to search server. Please make sure your backend is deployed and the URL is correct.');
-      console.error('Server connection error:', error);
-    }
-  };
+  // Configuration - prioritize environment variable, fallback to extension config
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 
+    (extensionConfig?.backend_url) || 
+    'https://ai-powered-semantic-search-app.vercel.app';
 
   const contentTypes = [
     { id: 'article', name: 'Articles', icon: FileText, count: 245 },
@@ -68,6 +95,38 @@ const EnhancedSemanticSearchApp = () => {
     'green bottle with label'
   ];
 
+  // Effects
+  useEffect(() => {
+    checkServerStatus();
+  }, [API_BASE_URL]);
+
+  // Server status check
+  const checkServerStatus = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/health`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setServerStatus('online');
+        setError(null);
+        console.log('Server status:', data);
+      } else {
+        setServerStatus('offline');
+        setError(`Server responded with status ${response.status}. Please check your backend deployment.`);
+      }
+    } catch (error) {
+      setServerStatus('offline');
+      setError('Cannot connect to search server. Please make sure your backend is deployed and accessible.');
+      console.error('Server connection error:', error);
+    }
+  };
+
+  // Search functionality
   const handleSearch = async () => {
     if (!searchQuery.trim()) {
       setError('Please enter a search query');
@@ -85,7 +144,7 @@ const EnhancedSemanticSearchApp = () => {
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 45000); // Increased timeout for serverless functions
+      const timeoutId = setTimeout(() => controller.abort(), 45000);
 
       const requestBody = {
         query: searchQuery.trim(),
@@ -107,8 +166,6 @@ const EnhancedSemanticSearchApp = () => {
       });
 
       clearTimeout(timeoutId);
-
-      console.log('Response status:', response.status);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Server error' }));
@@ -133,7 +190,7 @@ const EnhancedSemanticSearchApp = () => {
       console.error('Search failed:', searchError);
       
       if (searchError.name === 'AbortError') {
-        setError('Search request timed out. Serverless functions may take longer to respond on first request.');
+        setError('Search request timed out. Serverless functions may take longer on first request.');
       } else if (searchError.message.includes('fetch') || searchError.message.includes('NetworkError')) {
         setError('Cannot connect to search server. Please verify your backend URL and deployment status.');
         setServerStatus('offline');
@@ -147,6 +204,7 @@ const EnhancedSemanticSearchApp = () => {
     }
   };
 
+  // Event handlers
   const handleKeyPress = (e) => {
     if (e.key === 'Enter') {
       handleSearch();
@@ -169,6 +227,12 @@ const EnhancedSemanticSearchApp = () => {
     );
   };
 
+  const handleExampleClick = (example) => {
+    setSearchQuery(example);
+    setError(null);
+  };
+
+  // Utility functions
   const getSimilarityColor = (score) => {
     if (score >= 0.9) return 'text-green-600 bg-green-50';
     if (score >= 0.8) return 'text-blue-600 bg-blue-50';
@@ -181,32 +245,81 @@ const EnhancedSemanticSearchApp = () => {
     return contentType ? contentType.icon : FileText;
   };
 
-  const handleExampleClick = (example) => {
-    setSearchQuery(example);
-    setError(null);
+  const getFullImageUrl = (imageUrl) => {
+    if (!imageUrl) return null;
+    
+    try {
+      if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+        return imageUrl;
+      }
+      
+      if (imageUrl.startsWith('//')) {
+        return `https:${imageUrl}`;
+      }
+      
+      if (imageUrl.includes('contentstack.io')) {
+        return `https://${imageUrl}`;
+      }
+      
+      return imageUrl;
+    } catch (error) {
+      console.error('Error processing image URL:', imageUrl, error);
+      return null;
+    }
   };
 
-  // Helper function to format price
   const formatPrice = (price) => {
     if (!price) return null;
     return `$${parseFloat(price).toFixed(2)}`;
   };
 
-  // Helper function to format duration
   const formatDuration = (duration) => {
     if (!duration) return null;
     return `${duration} min`;
   };
 
-  // Helper function to ensure image URL is absolute
-  const getFullImageUrl = (imageUrl) => {
-    if (!imageUrl) return null;
-    if (imageUrl.startsWith('http')) return imageUrl;
-    // If it's a Contentstack URL, ensure it has https
-    if (imageUrl.includes('contentstack.io')) {
-      return imageUrl.startsWith('//') ? `https:${imageUrl}` : `https://${imageUrl}`;
-    }
-    return imageUrl;
+  // Image component with fallback
+  const ImageWithFallback = ({ src, alt, className, result }) => {
+    const [isLoading, setIsLoading] = useState(true);
+    const [hasError, setHasError] = useState(false);
+
+    const handleLoad = () => {
+      setIsLoading(false);
+      setHasError(false);
+    };
+
+    const handleError = () => {
+      setIsLoading(false);
+      setHasError(true);
+    };
+
+    if (!src) return null;
+
+    return (
+      <div className={`relative ${className}`}>
+        {isLoading && (
+          <div className={`absolute inset-0 bg-gray-100 rounded-lg flex items-center justify-center ${className}`}>
+            <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+          </div>
+        )}
+        <img 
+          src={getFullImageUrl(src)}
+          alt={alt}
+          className={`${className} ${isLoading ? 'opacity-0' : 'opacity-100'} transition-opacity duration-300 ${hasError ? 'hidden' : ''}`}
+          onLoad={handleLoad}
+          onError={handleError}
+          loading="lazy"
+        />
+        {hasError && (
+          <div className={`${className} bg-gray-100 rounded-lg flex items-center justify-center border border-gray-200`}>
+            <div className="text-gray-400 text-center p-2">
+              <ImageIcon className="w-6 h-6 mx-auto mb-1" />
+              <span className="text-xs">Image unavailable</span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -220,7 +333,14 @@ const EnhancedSemanticSearchApp = () => {
                 <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
                   <Brain className="w-5 h-5 text-white" />
                 </div>
-                <h1 className="text-xl font-semibold text-gray-900">Enhanced Semantic Search</h1>
+                <h1 className="text-xl font-semibold text-gray-900">
+                  AI-Powered Semantic Search
+                  {isContentstackApp && (
+                    <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                      Contentstack App
+                    </span>
+                  )}
+                </h1>
               </div>
               <div className="hidden sm:flex items-center space-x-1 bg-gradient-to-r from-blue-50 to-purple-50 text-blue-700 px-3 py-1 rounded-full text-sm">
                 <Eye className="w-4 h-4" />
@@ -228,7 +348,6 @@ const EnhancedSemanticSearchApp = () => {
               </div>
             </div>
             <div className="flex items-center space-x-3">
-              {/* Server Status Indicator */}
               <div className="flex items-center space-x-2">
                 {serverStatus === 'online' ? (
                   <div className="flex items-center space-x-1 text-green-600">
@@ -242,13 +361,13 @@ const EnhancedSemanticSearchApp = () => {
                   </div>
                 ) : (
                   <div className="flex items-center space-x-1 text-yellow-600">
-                    <div className="w-4 h-4 animate-spin border border-yellow-600 border-t-transparent rounded-full"></div>
+                    <Loader2 className="w-4 h-4 animate-spin" />
                     <span className="text-xs">Checking...</span>
                   </div>
                 )}
               </div>
               <button 
-                onClick={() => checkServerStatus()}
+                onClick={checkServerStatus}
                 className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                 title="Refresh server status"
               >
@@ -264,7 +383,7 @@ const EnhancedSemanticSearchApp = () => {
         <div className="bg-red-50 border-l-4 border-red-400 p-4 mx-6 mt-4 rounded-r-lg">
           <div className="flex items-center">
             <AlertCircle className="w-5 h-5 text-red-400 mr-3" />
-            <div>
+            <div className="flex-1">
               <p className="text-sm text-red-700">{error}</p>
               {serverStatus === 'offline' && (
                 <div className="mt-2 space-y-1">
@@ -274,15 +393,13 @@ const EnhancedSemanticSearchApp = () => {
                   >
                     Retry connection
                   </button>
-                  <p className="text-xs text-red-600">
-                    Current backend URL: {API_BASE_URL}
-                  </p>
+                  <p className="text-xs text-red-600">Backend URL: {API_BASE_URL}</p>
                 </div>
               )}
             </div>
             <button 
               onClick={() => setError(null)}
-              className="ml-auto text-red-400 hover:text-red-600"
+              className="ml-auto text-red-400 hover:text-red-600 text-xl font-bold px-2"
             >
               ×
             </button>
@@ -290,7 +407,7 @@ const EnhancedSemanticSearchApp = () => {
         </div>
       )}
 
-      {/* Enhanced Search Context Banner */}
+      {/* Search Context Banner */}
       {searchContext && showResults && (
         <div className={`mx-6 mt-4 p-4 rounded-lg ${
           searchContext.isVisualQuery 
@@ -322,8 +439,8 @@ const EnhancedSemanticSearchApp = () => {
               </p>
               {searchContext.matchedVisualKeywords && searchContext.matchedVisualKeywords.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1">
-                  {searchContext.matchedVisualKeywords.slice(0, 5).map((keyword, keywordIdx) => (
-                    <span key={keywordIdx} className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-700">
+                  {searchContext.matchedVisualKeywords.slice(0, 5).map((keyword, idx) => (
+                    <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-700">
                       {keyword}
                     </span>
                   ))}
@@ -379,7 +496,7 @@ const EnhancedSemanticSearchApp = () => {
                   }`}>
                     {isSearching ? (
                       <div className="flex items-center space-x-2">
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        <Loader2 className="w-4 h-4 animate-spin" />
                         <span>Searching...</span>
                       </div>
                     ) : (
@@ -407,23 +524,15 @@ const EnhancedSemanticSearchApp = () => {
                   Try these visual search examples:
                 </h4>
                 <div className="flex flex-wrap gap-2">
-                  {visualSearchExamples.map((example, exampleIdx) => (
+                  {visualSearchExamples.map((example, idx) => (
                     <button
-                      key={exampleIdx}
+                      key={idx}
                       onClick={() => handleExampleClick(example)}
                       className="px-3 py-1 text-xs bg-white border border-purple-200 rounded-full hover:bg-purple-50 hover:border-purple-300 transition-colors"
                     >
                       {example}
                     </button>
                   ))}
-                </div>
-              </div>
-
-              {/* Backend URL Display */}
-              <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Backend URL:</span>
-                  <span className="text-xs font-mono text-gray-800">{API_BASE_URL}</span>
                 </div>
               </div>
             </div>
@@ -459,7 +568,7 @@ const EnhancedSemanticSearchApp = () => {
                 {isSearching ? (
                   <div className="p-8">
                     <div className="flex flex-col items-center justify-center space-y-4">
-                      <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent"></div>
+                      <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
                       <p className="text-gray-500">Analyzing content with multimodal AI...</p>
                       <p className="text-xs text-gray-400">First request may take longer on serverless functions</p>
                     </div>
@@ -468,6 +577,9 @@ const EnhancedSemanticSearchApp = () => {
                   <div className="divide-y divide-gray-200">
                     {searchResults.map((result) => {
                       const IconComponent = getContentTypeIcon(result.contentType || result.type);
+                      const primaryImage = result.primaryImage || result.primary_image;
+                      const allImages = result.allImages || result.all_images;
+                      
                       return (
                         <div key={result.id} className="p-6 hover:bg-gray-50 transition-colors">
                           <div className="flex items-start space-x-4">
@@ -482,10 +594,10 @@ const EnhancedSemanticSearchApp = () => {
                                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getSimilarityColor(result.similarity || result.relevance)}`}>
                                   {Math.round((result.similarity || result.relevance) * 100)}% match
                                 </span>
-                                {result.hasImages && (
+                                {(primaryImage || (allImages && allImages.length > 0)) && (
                                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-purple-100 text-purple-700">
                                     <ImageIcon className="w-3 h-3 mr-1" />
-                                    {result.imageCount > 1 ? `${result.imageCount} Images` : 'Image'}
+                                    {allImages && allImages.length > 1 ? `${allImages.length} Images` : 'Image'}
                                   </span>
                                 )}
                                 {result.visualQueryMatch && (
@@ -502,39 +614,63 @@ const EnhancedSemanticSearchApp = () => {
                                 )}
                               </div>
                               
-                              {/* Enhanced Image Display */}
-                              {(result.primaryImage || result.primary_image) && (
+                              {/* Image Display */}
+                              {primaryImage && (
                                 <div className="mb-4">
                                   <div className="flex items-start space-x-3">
-                                    <img 
-                                      src={getFullImageUrl(result.primaryImage || result.primary_image)} 
-                                      alt={result.title}
-                                      className="w-40 h-32 object-cover rounded-lg border border-gray-200 shadow-sm"
-                                      onError={(e) => {
-                                        e.target.style.display = 'none';
-                                      }}
-                                    />
-                                    {(result.allImages || result.all_images) && (result.allImages || result.all_images).length > 1 && (
+                                    <div className="relative">
+                                      <ImageWithFallback 
+                                        src={primaryImage}
+                                        alt={result.title}
+                                        className="w-48 h-36 object-cover rounded-lg border border-gray-200 shadow-sm"
+                                        result={result}
+                                      />
+                                      {result.imageAnalyzed && (
+                                        <div className="absolute top-2 left-2 bg-yellow-400 text-yellow-900 px-2 py-1 rounded text-xs font-medium">
+                                          <Sparkles className="w-3 h-3 inline mr-1" />
+                                          AI
+                                        </div>
+                                      )}
+                                    </div>
+                                    
+                                    {/* Additional images */}
+                                    {allImages && allImages.length > 1 && (
                                       <div className="flex flex-col space-y-2">
-                                        {(result.allImages || result.all_images).slice(1, 4).map((imageUrl, imgIdx) => (
-                                          <img
-                                            key={imgIdx}
-                                            src={getFullImageUrl(imageUrl)}
-                                            alt={`${result.title} ${imgIdx + 2}`}
-                                            className="w-16 h-12 object-cover rounded border border-gray-200"
-                                            onError={(e) => {
-                                              e.target.style.display = 'none';
-                                            }}
-                                          />
-                                        ))}
-                                        {(result.imageCount || result.image_count) > 4 && (
-                                          <div className="w-16 h-12 bg-gray-100 rounded border border-gray-200 flex items-center justify-center">
-                                            <span className="text-xs text-gray-500">+{(result.imageCount || result.image_count) - 4}</span>
-                                          </div>
-                                        )}
+                                        <div className="text-xs text-gray-500 mb-1">
+                                          +{allImages.length - 1} more
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2 max-w-[120px]">
+                                          {allImages.slice(1, 5).map((imageUrl, imgIdx) => (
+                                            <ImageWithFallback
+                                              key={imgIdx}
+                                              src={imageUrl}
+                                              alt={`${result.title} ${imgIdx + 2}`}
+                                              className="w-14 h-10 object-cover rounded border border-gray-200"
+                                              result={result}
+                                            />
+                                          ))}
+                                          {allImages.length > 5 && (
+                                            <div className="w-14 h-10 bg-gray-100 rounded border border-gray-200 flex items-center justify-center">
+                                              <span className="text-xs text-gray-500">+{allImages.length - 5}</span>
+                                            </div>
+                                          )}
+                                        </div>
                                       </div>
                                     )}
                                   </div>
+                                  
+                                  {/* AI image analysis */}
+                                  {result.imageAnalysis && (
+                                    <div className="mt-3 p-3 bg-yellow-50 rounded-lg border-l-4 border-yellow-400">
+                                      <div className="flex items-start space-x-2">
+                                        <Sparkles className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" />
+                                        <div>
+                                          <p className="text-sm font-medium text-yellow-800">AI Vision Analysis:</p>
+                                          <p className="text-sm text-yellow-700 mt-1">{result.imageAnalysis}</p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               )}
                               
@@ -542,7 +678,7 @@ const EnhancedSemanticSearchApp = () => {
                                 {result.snippet}
                               </p>
                               
-                              {/* Enhanced metadata display */}
+                              {/* Metadata */}
                               <div className="flex items-center space-x-4 text-sm text-gray-500 flex-wrap gap-y-1">
                                 <span className="capitalize">{result.contentType || result.type}</span>
                                 <span>•</span>
@@ -657,7 +793,7 @@ const EnhancedSemanticSearchApp = () => {
             )}
           </div>
 
-          {/* Enhanced Filters Sidebar */}
+          {/* Filters Sidebar */}
           <div className="lg:col-span-1">
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sticky top-24">
               <div className="flex items-center space-x-2 mb-6">
@@ -711,7 +847,7 @@ const EnhancedSemanticSearchApp = () => {
                 </div>
               </div>
 
-              {/* Enhanced Features Info */}
+              {/* AI Features Info */}
               <div className="mb-6 p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg">
                 <h4 className="text-sm font-medium text-gray-900 mb-2 flex items-center">
                   <Sparkles className="w-4 h-4 mr-2 text-purple-600" />
@@ -776,4 +912,4 @@ const EnhancedSemanticSearchApp = () => {
   );
 };
 
-export default EnhancedSemanticSearchApp;
+export default EnhancedSemanticSearch;
