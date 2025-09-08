@@ -12,11 +12,11 @@
   },
   "routes": [
     {
-      "path": "/semantic-search",
+      "path": "/",
       "component": "index.html"
     },
     {
-      "path": "/semantic-search/*",
+      "path": "/*",
       "component": "index.html"
     }
   ],
@@ -36,7 +36,7 @@
   "redirects": [
     {
       "from": "/",
-      "to": "/semantic-search",
+      "to": "/",
       "status": 302
     }
   ],
