@@ -74,17 +74,22 @@ const Stack = contentstack.Stack({
 const app = express();
 
 // Middleware - Updated CORS for Vercel
+
+
 app.use(cors({
   origin: [
     'http://localhost:5173', 
     'http://localhost:3000', 
     'http://127.0.0.1:5173',
-    // Add your production domains here when needed
+    'https://aipoweredsemanticsearchapp.eu-contentstackapps.com'
   ],
   credentials: true
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
 
 // Helper functions for image extraction and analysis
 function extractImageUrls(entry) {
