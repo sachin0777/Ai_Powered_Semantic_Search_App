@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "icon": "extension-icon.svg",
   "target_type": "stack",
-  "scope": "admin",
+  "visibility": "private",
   "framework": {
     "type": "react",
     "version": "18.2.0"
@@ -12,7 +12,10 @@
   "config": {
     "signed_request_enabled": true,
     "cors_enabled": true,
-    "allowed_origins": ["https://app.contentstack.com", "https://eu-app.contentstack.com"],
+    "allowed_origins": [
+      "https://app.contentstack.com",
+      "https://eu-app.contentstack.com"
+    ],
     "webhooks_enabled": true,
     "auto_sync": true
   },
@@ -41,7 +44,7 @@
   ],
   "oauth": {
     "redirect_uri": "https://ai-powered-semantic-search-app.vercel.app/auth/callback",
-    "enable_sso": true
+    "enabled": false
   },
   "installation_parameters": {
     "cohere_api_key": {
@@ -52,7 +55,7 @@
       "secure": true
     },
     "pinecone_api_key": {
-      "display_name": "Pinecone API Key", 
+      "display_name": "Pinecone API Key",
       "instruction": "Enter your Pinecone API key for vector database",
       "type": "singleline",
       "required": true,
