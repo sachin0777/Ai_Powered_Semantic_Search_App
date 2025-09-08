@@ -6,7 +6,7 @@ export default defineConfig({
   // Change this:
   base: './',   // ⚠️ was '/semantic-search/' before
   build: {
-    outDir: '../dist',
+    outDir: 'dist',
     assetsDir: 'assets',
     sourcemap: false,
     rollupOptions: {
