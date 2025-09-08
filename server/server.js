@@ -81,7 +81,9 @@ app.use(cors({
     'http://localhost:5173', 
     'http://localhost:3000', 
     'http://127.0.0.1:5173',
-    'https://aipoweredsemanticsearchapp.eu-contentstackapps.com'
+    'https://aipoweredsemanticsearchapp.eu-contentstackapps.com',
+    'https://ai-powered-semantic-search-app-frontend-g1xlufsou.vercel.app'
+
   ],
   credentials: true
 }));
