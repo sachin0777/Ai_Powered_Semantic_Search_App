@@ -88,8 +88,31 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// HELPER FUNCTIONS - MOVED TO GLOBAL SCOPE
 
+// Force image URLs to use https
+function ensureHttpsUrl(url) {
+  if (!url) return null;
+  try {
+    let u = new URL(url, "https://dummy-base.com"); // handles relative
+    if (u.protocol !== "https:") {
+      u.protocol = "https:";
+    }
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
 
+// Helper function to check if URL is an image
+function isImageUrl(url) {
+  if (!url) return false;
+  const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
+  const urlLower = url.toLowerCase();
+  return imageExtensions.some(ext => urlLower.includes(ext)) || 
+         urlLower.includes('/images/') || 
+         urlLower.includes('image');
+}
 
 // Helper functions for image extraction and analysis
 function extractImageUrls(entry) {
@@ -151,18 +174,6 @@ function extractImageUrls(entry) {
   }
 
   return [...new Set(images)]; // Remove duplicates
-}
-
-
-
-// Helper function to check if URL is an image
-function isImageUrl(url) {
-  if (!url) return false;
-  const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
-  const urlLower = url.toLowerCase();
-  return imageExtensions.some(ext => urlLower.includes(ext)) || 
-         urlLower.includes('/images/') || 
-         urlLower.includes('image');
 }
 
 function analyzeImageFields(entry) {
@@ -436,23 +447,7 @@ async function reindexEntry(entryData, contentType, locale, index) {
       throw new Error("Failed to get embeddings from Cohere");
     }
 
-
-    // Force image URLs to use https
-function ensureHttpsUrl(url) {
-  if (!url) return null;
-  try {
-    let u = new URL(url, "https://dummy-base.com"); // handles relative
-    if (u.protocol !== "https:") {
-      u.protocol = "https:";
-    }
-    return u.toString();
-  } catch {
-    return url;
-  }
-}
-
-
-// Extract images
+    // Extract images
     const images = extractImageUrls(entryData);
     console.log(`🖼️ Found ${images.length} images for entry ${entryData.uid}`);
     if (images.length > 0) {
@@ -885,12 +880,10 @@ app.get('/debug-vectors', async (req, res) => {
 });
 
 // ===========================================
-// WEBHOOK ENDPOINTS - NEW INTEGRATION
+// WEBHOOK ENDPOINTS - ENHANCED INTEGRATION
 // ===========================================
 
-
 // Webhook handler for Contentstack content changes
-
 app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
   try {
     console.log('🔔 Received Contentstack webhook:', JSON.stringify(req.body, null, 2));
@@ -902,7 +895,18 @@ app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
       return res.status(400).json({ error: 'Invalid webhook payload' });
     }
 
-    // Handle different webhook payload structures
+    // Handle asset events separately
+    if (module === 'asset' || (data.asset && data.asset.uid)) {
+      console.log(`📷 Asset event: ${event} for asset ${data.asset?.uid || data.uid}`);
+      return res.status(200).json({ 
+        success: true, 
+        message: 'Asset webhook received but not processed',
+        event,
+        assetUid: data.asset?.uid || data.uid
+      });
+    }
+
+    // Handle different webhook payload structures for entries
     let entryData, contentType, entryUid, locale;
 
     if (module === 'entry' && data.entry) {
@@ -911,36 +915,70 @@ app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
       contentType = entryData.content_type_uid;
       entryUid = entryData.uid;
       locale = entryData.locale || 'en-us';
-    } else if (module === 'asset' && data.asset) {
-      // Asset webhook - log and acknowledge but don't process
-      console.log(`📷 Asset event: ${event} for asset ${data.asset.uid}`);
-      return res.status(200).json({ 
-        success: true, 
-        message: 'Asset webhook received but not processed',
-        event,
-        assetUid: data.asset.uid
-      });
     } else if (data.uid && data.content_type_uid) {
       // Direct entry data
       entryData = data;
       contentType = data.content_type_uid;
       entryUid = data.uid;
       locale = data.locale || 'en-us';
-    } else if (data.uid && !data.content_type_uid) {
-      // Could be asset data without content_type_uid
-      console.log(`📷 Possible asset event: ${event} for ${data.uid}`);
-      return res.status(200).json({ 
-        success: true, 
-        message: 'Asset-like webhook received but not processed',
-        event,
-        uid: data.uid
-      });
     } else {
-      console.log('❌ Unsupported webhook payload structure:', { event, dataKeys: Object.keys(data), module });
-      return res.status(400).json({ 
-        error: 'Unsupported payload structure',
-        received: { event, module, dataKeys: Object.keys(data) }
+      console.log('❌ Unsupported webhook payload structure:', { 
+        event, 
+        dataKeys: Object.keys(data), 
+        module,
+        hasContentTypeUid: !!data.content_type_uid,
+        hasUid: !!data.uid
       });
+      
+      // Check if this might be an entry without content_type_uid
+      if (data.uid && !data.content_type_uid && !data.asset) {
+        console.log('🔍 Entry-like payload without content_type_uid, attempting to fetch from Contentstack...');
+        
+        try {
+          // Try to determine content type by fetching the entry
+          const contentTypes = await Stack.getContentTypes();
+          let foundEntry = null;
+          let foundContentType = null;
+          
+          for (const ct of contentTypes.content_types || []) {
+            try {
+              const entry = await Stack.ContentType(ct.uid).Entry(data.uid).toJSON().fetch();
+              if (entry && entry.uid === data.uid) {
+                foundEntry = entry;
+                foundContentType = ct.uid;
+                break;
+              }
+            } catch (e) {
+              // Entry not found in this content type, continue
+            }
+          }
+          
+          if (foundEntry && foundContentType) {
+            console.log(`✅ Found entry ${data.uid} in content type ${foundContentType}`);
+            entryData = foundEntry;
+            contentType = foundContentType;
+            entryUid = data.uid;
+            locale = foundEntry.locale || 'en-us';
+          } else {
+            console.log(`❌ Could not find entry ${data.uid} in any content type`);
+            return res.status(404).json({ 
+              error: 'Entry not found in any content type',
+              uid: data.uid
+            });
+          }
+        } catch (fetchError) {
+          console.error('❌ Failed to fetch entry details:', fetchError.message);
+          return res.status(500).json({
+            error: 'Failed to determine content type',
+            details: fetchError.message
+          });
+        }
+      } else {
+        return res.status(400).json({ 
+          error: 'Unsupported payload structure',
+          received: { event, module, dataKeys: Object.keys(data) }
+        });
+      }
     }
 
     console.log(`📝 Processing webhook: ${event} for ${contentType}:${entryUid} (${locale})`);
@@ -950,9 +988,9 @@ app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
       uid: entryData.uid,
       title: entryData.title,
       availableFields: Object.keys(entryData).filter(key => !key.startsWith('_')),
-      imageField: entryData.image,
-      featuredImageField: entryData.featured_image,
-      imagesField: entryData.images,
+      imageField: entryData.image ? 'present' : 'absent',
+      featuredImageField: entryData.featured_image ? 'present' : 'absent',
+      imagesField: entryData.images ? 'present' : 'absent',
       hasImageFields: !!(entryData.image || entryData.featured_image || entryData.images)
     });
 
@@ -1010,9 +1048,6 @@ app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
   }
 });
 
-
-
-
 // Webhook test endpoint
 app.get('/api/webhook/test', (req, res) => {
   res.json({
@@ -1024,6 +1059,12 @@ app.get('/api/webhook/test', (req, res) => {
       'entry.update', 
       'entry.unpublish',
       'entry.delete'
+    ],
+    assetEventsHandled: [
+      'asset.publish',
+      'asset.update',
+      'asset.unpublish', 
+      'asset.delete'
     ]
   });
 });
@@ -1176,5 +1217,6 @@ if (process.env.NODE_ENV !== 'production') {
     console.log(`   - Debug endpoints: ✅`);
     console.log(`   - Webhook integration: ✅`);
     console.log(`   - Real-time sync: ✅`);
+    console.log(`   - Enhanced asset handling: ✅`);
   });
 }
