@@ -18,7 +18,7 @@ const requiredEnvVars = [
 
 for (const envVar of requiredEnvVars) {
   if (!process.env[envVar]) {
-    console.error(`❌ Missing required environment variable: ${envVar}`);
+    console.error(`Missing required environment variable: ${envVar}`);
     process.exit(1);
   }
 }
@@ -112,6 +112,107 @@ function isImageUrl(url) {
   return imageExtensions.some(ext => urlLower.includes(ext)) || 
          urlLower.includes('/images/') || 
          urlLower.includes('image');
+}
+
+// New function to map content types to display names
+function mapContentTypeToDisplay(contentTypeUid) {
+  const mappings = {
+    'article': 'article',
+    'blog_post': 'article',
+    'news': 'article',
+    'post': 'article',
+    'content': 'article',
+    'page': 'article',
+    'product': 'product',
+    'item': 'product',
+    'goods': 'product',
+    'smartphone': 'product',
+    'electronics': 'product',
+    'watch': 'product',
+    'media': 'media',
+    'image': 'media',
+    'asset': 'media',
+    'video': 'video',
+    'movie': 'video',
+    'film': 'video'
+  };
+  
+  // Try exact match first
+  if (mappings[contentTypeUid]) {
+    return mappings[contentTypeUid];
+  }
+  
+  // Try partial matches
+  const lowerUid = contentTypeUid.toLowerCase();
+  for (const [key, value] of Object.entries(mappings)) {
+    if (lowerUid.includes(key)) {
+      return value;
+    }
+  }
+  
+  // Default fallback based on common patterns
+  if (lowerUid.includes('product') || lowerUid.includes('item') || lowerUid.includes('goods')) {
+    return 'product';
+  }
+  if (lowerUid.includes('video') || lowerUid.includes('movie') || lowerUid.includes('film')) {
+    return 'video';
+  }
+  if (lowerUid.includes('media') || lowerUid.includes('image') || lowerUid.includes('photo')) {
+    return 'media';
+  }
+  
+  // Default fallback
+  return 'article';
+}
+
+// New function for AI image analysis
+async function analyzeImageWithAI(imageUrl, title = '', query = '') {
+  if (!openai) {
+    console.log('OpenAI not available for image analysis');
+    return null;
+  }
+
+  try {
+    console.log(`Analyzing image: ${imageUrl.substring(0, 100)}...`);
+    
+    const analysisPrompt = query 
+      ? `Analyze this image for a content item titled "${title}" in the context of the search query "${query}". Describe the key visual elements including colors, objects, text, patterns, and overall composition. Focus on details that would be useful for search and discovery.`
+      : `Analyze this image for a content item titled "${title}". Describe the key visual elements including colors, objects, text, patterns, and overall composition. Focus on details that would be useful for search and discovery.`;
+    
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: analysisPrompt
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: ensureHttpsUrl(imageUrl)
+              }
+            }
+          ]
+        }
+      ],
+      max_tokens: 300
+    });
+
+    const analysis = response.choices[0]?.message?.content;
+    
+    if (analysis) {
+      console.log(`Image analysis completed: ${analysis.substring(0, 100)}...`);
+      return analysis;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error(`Image analysis failed for ${imageUrl}:`, error.message);
+    return null;
+  }
 }
 
 // Helper functions for image extraction and analysis
@@ -305,7 +406,7 @@ const authenticateWebhook = (req, res, next) => {
   const authHeader = req.headers.authorization;
   
   if (!authHeader || !authHeader.startsWith('Basic ')) {
-    console.log('❌ Webhook authentication failed: No basic auth header');
+    console.log('Webhook authentication failed: No basic auth header');
     return res.status(401).json({ error: 'Authentication required' });
   }
 
@@ -318,14 +419,14 @@ const authenticateWebhook = (req, res, next) => {
     const expectedPassword = process.env.WEBHOOK_PASSWORD || 'your-secure-password';
 
     if (username !== expectedUsername || password !== expectedPassword) {
-      console.log('❌ Webhook authentication failed: Invalid credentials');
+      console.log('Webhook authentication failed: Invalid credentials');
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    console.log('✅ Webhook authentication successful');
+    console.log('Webhook authentication successful');
     next();
   } catch (error) {
-    console.log('❌ Webhook authentication error:', error.message);
+    console.log('Webhook authentication error:', error.message);
     return res.status(401).json({ error: 'Authentication failed' });
   }
 };
@@ -399,37 +500,37 @@ function extractRichTextContent(richTextObj) {
 
 // WEBHOOK HANDLER FUNCTIONS
 async function handleEntryPublish(entryData, contentType, locale, index) {
-  console.log(`📤 Publishing entry: ${entryData.uid}`);
+  console.log(`Publishing entry: ${entryData.uid}`);
   await reindexEntry(entryData, contentType, locale, index);
 }
 
 async function handleEntryUpdate(entryData, contentType, locale, index) {
-  console.log(`📝 Updating entry: ${entryData.uid}`);
+  console.log(`Updating entry: ${entryData.uid}`);
   await reindexEntry(entryData, contentType, locale, index);
 }
 
 async function handleEntryUnpublish(entryUid, contentType, locale, index) {
-  console.log(`📥 Unpublishing entry: ${entryUid}`);
+  console.log(`Unpublishing entry: ${entryUid}`);
   await removeFromIndex(entryUid, contentType, locale, index);
 }
 
 async function handleEntryDelete(entryUid, contentType, locale, index) {
-  console.log(`🗑️ Deleting entry: ${entryUid}`);
+  console.log(`Deleting entry: ${entryUid}`);
   await removeFromIndex(entryUid, contentType, locale, index);
 }
 
-// Enhanced reindex function
+// Enhanced reindex function with proper image analysis
 async function reindexEntry(entryData, contentType, locale, index) {
   try {
     // Extract content for embedding
     const content = extractContentFromEntry(entryData, contentType);
     
     if (!content || content.trim().length === 0) {
-      console.log(`⚠️ No content to index for entry ${entryData.uid}`);
+      console.log(`No content to index for entry ${entryData.uid}`);
       return;
     }
 
-    console.log(`🤖 Generating embedding for: ${entryData.title || entryData.uid}`);
+    console.log(`Generating embedding for: ${entryData.title || entryData.uid}`);
 
     // Generate embedding using Cohere
     const embedResponse = await cohere.embed({
@@ -447,17 +548,20 @@ async function reindexEntry(entryData, contentType, locale, index) {
       throw new Error("Failed to get embeddings from Cohere");
     }
 
-    // Extract images
+    // Extract images with enhanced logging
     const images = extractImageUrls(entryData);
-    console.log(`🖼️ Found ${images.length} images for entry ${entryData.uid}`);
+    console.log(`Found ${images.length} images for entry ${entryData.uid}`);
     if (images.length > 0) {
       console.log(`   Image URLs:`, images);
     }
     
-    // Prepare metadata
+    // Prepare metadata with proper content type mapping
+    const mappedType = mapContentTypeToDisplay(contentType);
+    console.log(`Mapping content type ${contentType} to ${mappedType}`);
+    
     const metadata = {
       id: entryData.uid,
-      type: contentType,
+      type: mappedType, // Use the mapped type
       content_type_uid: contentType,
       title: entryData.title || entryData.name || 'Untitled',
       snippet: content.substring(0, 300) + (content.length > 300 ? '...' : ''),
@@ -470,15 +574,32 @@ async function reindexEntry(entryData, contentType, locale, index) {
       category: entryData.category || contentType
     };
 
-    // Add enhanced image metadata if images exist
+    // Add enhanced image metadata and analysis
     if (images.length > 0) {
       metadata.primary_image = images[0];
       metadata.all_images = images;
       metadata.image_count = images.length;
       metadata.has_images = true;
-      console.log(`   ✅ Added image metadata: primary=${images[0].substring(0, 50)}...`);
+      
+      // Perform AI image analysis if OpenAI is available
+      if (openai && images[0]) {
+        try {
+          console.log(`Performing AI image analysis for entry ${entryData.uid}`);
+          const imageAnalysis = await analyzeImageWithAI(images[0], entryData.title || 'content');
+          
+          if (imageAnalysis) {
+            metadata.image_analysis = imageAnalysis;
+            metadata.image_analyzed = true;
+            console.log(`AI analysis completed for ${entryData.uid}: ${imageAnalysis.substring(0, 100)}...`);
+          }
+        } catch (analysisError) {
+          console.warn(`Image analysis failed for ${entryData.uid}:`, analysisError.message);
+        }
+      }
+      
+      console.log(`   Added image metadata: primary=${images[0].substring(0, 50)}...`);
     } else {
-      console.log(`   ⚠️ No images found for entry ${entryData.uid}`);
+      console.log(`   No images found for entry ${entryData.uid}`);
     }
 
     // Add additional fields that might be useful for search
@@ -498,9 +619,9 @@ async function reindexEntry(entryData, contentType, locale, index) {
       metadata: metadata
     }]);
 
-    console.log(`✅ Successfully reindexed entry: ${entryData.uid} (${vectorId})`);
+    console.log(`Successfully reindexed entry: ${entryData.uid} (${vectorId}) as type: ${mappedType}`);
   } catch (error) {
-    console.error(`❌ Failed to reindex entry ${entryData.uid}:`, error);
+    console.error(`Failed to reindex entry ${entryData.uid}:`, error);
     throw error;
   }
 }
@@ -512,9 +633,9 @@ async function removeFromIndex(entryUid, contentType, locale, index) {
     const vectorId = `${entryUid}_${locale}`;
     await index.deleteOne(vectorId);
     
-    console.log(`✅ Successfully removed entry from index: ${vectorId}`);
+    console.log(`Successfully removed entry from index: ${vectorId}`);
   } catch (error) {
-    console.error(`❌ Failed to remove entry ${entryUid} from index:`, error);
+    console.error(`Failed to remove entry ${entryUid} from index:`, error);
     throw error;
   }
 }
@@ -589,7 +710,7 @@ app.get('/debug-contentstack/:contentType/:entryId?', async (req, res) => {
 
 // Enhanced Semantic Search Endpoint with Image Analysis
 app.post("/search", async (req, res) => {
-  console.log('🔍 Search request received:', req.body);
+  console.log('Search request received:', req.body);
   
   try {
     const { query, contentTypes = [], locales = [] } = req.body;
@@ -601,16 +722,16 @@ app.post("/search", async (req, res) => {
       });
     }
 
-    console.log(`📝 Processing query: "${query}"`);
-    console.log(`🎯 Content types filter: ${contentTypes}`);
-    console.log(`🌍 Locales filter: ${locales}`);
+    console.log(`Processing query: "${query}"`);
+    console.log(`Content types filter: ${contentTypes}`);
+    console.log(`Locales filter: ${locales}`);
 
     // Detect if this is a visual query
     const visualAnalysis = isVisualQuery(query);
-    console.log(`👁️ Visual query analysis:`, visualAnalysis);
+    console.log(`Visual query analysis:`, visualAnalysis);
 
     // Generate embedding for query using Cohere
-    console.log('🤖 Generating embeddings with Cohere...');
+    console.log('Generating embeddings with Cohere...');
     const embedResponse = await cohere.embed({
       model: "embed-english-light-v3.0",
       texts: [query.trim()],
@@ -625,7 +746,7 @@ app.post("/search", async (req, res) => {
     } else if (embedResponse?.body?.embeddings?.[0]) {
       queryVector = embedResponse.body.embeddings[0];
     } else {
-      console.error('❌ Cohere embedding response:', embedResponse);
+      console.error('Cohere embedding response:', embedResponse);
       throw new Error("Failed to get embeddings from Cohere");
     }
 
@@ -633,10 +754,10 @@ app.post("/search", async (req, res) => {
       throw new Error("Invalid vector format from Cohere");
     }
 
-    console.log(`✅ Generated vector with dimension: ${queryVector.length}`);
+    console.log(`Generated vector with dimension: ${queryVector.length}`);
 
     // Query Pinecone index
-    console.log('🔍 Querying Pinecone index...');
+    console.log('Querying Pinecone index...');
     const index = pinecone.Index(process.env.PINECONE_INDEX);
     
     const queryOptions = {
@@ -658,11 +779,11 @@ app.post("/search", async (req, res) => {
       }
     }
 
-    console.log('📊 Query options:', JSON.stringify(queryOptions, null, 2));
+    console.log('Query options:', JSON.stringify(queryOptions, null, 2));
 
     const searchResult = await index.query(queryOptions);
     
-    console.log(`🎯 Pinecone returned ${searchResult.matches?.length || 0} matches`);
+    console.log(`Pinecone returned ${searchResult.matches?.length || 0} matches`);
 
     // Process and return results
     const results = (searchResult.matches || []).map((item, index) => {
@@ -671,8 +792,8 @@ app.post("/search", async (req, res) => {
       return {
         id: item.id,
         title: metadata.title || `Result ${index + 1}`,
-        type: metadata.type || 'unknown',
-        contentType: metadata.type || 'unknown',
+        type: metadata.type || 'article', // Use mapped type with fallback
+        contentType: metadata.type || 'article',
         snippet: metadata.snippet || metadata.description || 'No description available',
         locale: metadata.locale || 'en-us',
         tags: Array.isArray(metadata.tags) ? metadata.tags : 
@@ -692,6 +813,7 @@ app.post("/search", async (req, res) => {
         allImages: metadata.all_images,
         image_analysis: metadata.image_analysis,
         imageAnalysis: metadata.image_analysis,
+        imageAnalyzed: !!metadata.image_analysis,
         visual_match: metadata.visual_match,
         visualMatch: metadata.visual_match,
         
@@ -716,12 +838,12 @@ app.post("/search", async (req, res) => {
       ...imageStats
     };
 
-    console.log(`✅ Returning ${sortedResults.length} processed results`);
-    console.log(`📊 Image statistics:`, imageStats);
+    console.log(`Returning ${sortedResults.length} processed results`);
+    console.log(`Image statistics:`, imageStats);
     
     // Log final processed scores
     if (sortedResults.length > 0) {
-      console.log('🏆 Final sorted scores (first 5):');
+      console.log('Final sorted scores (first 5):');
       sortedResults.slice(0, 5).forEach((result, idx) => {
         console.log(`   ${idx + 1}. ${result.title}: ${(result.relevance * 100).toFixed(1)}% (orig: ${result.originalScore?.toFixed(4)})`);
       });
@@ -740,7 +862,7 @@ app.post("/search", async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Search error:', error);
+    console.error('Search error:', error);
     
     // Provide more specific error messages
     let errorMessage = 'Search failed';
@@ -780,43 +902,19 @@ app.post("/analyze-image", async (req, res) => {
       return res.status(400).json({ error: "Image URL is required" });
     }
 
-    console.log(`🖼️ Analyzing image: ${imageUrl}`);
+    console.log(`Analyzing image: ${imageUrl}`);
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini", // Updated to current model
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: query ? 
-                `Analyze this image in the context of the search query: "${query}". Describe what you see and how it relates to the query.` :
-                "Describe what you see in this image in detail, focusing on colors, objects, text, patterns, and visual elements."
-            },
-            {
-              type: "image_url",
-              image_url: {
-                url: imageUrl
-              }
-            }
-          ]
-        }
-      ],
-      max_tokens: 300
-    });
-
-    const analysis = response.choices[0]?.message?.content || "Unable to analyze image";
+    const analysis = await analyzeImageWithAI(imageUrl, '', query);
 
     res.json({
-      analysis,
+      analysis: analysis || "Unable to analyze image",
       imageUrl,
       query: query || null,
       timestamp: new Date().toISOString()
     });
 
   } catch (error) {
-    console.error('❌ Image analysis error:', error);
+    console.error('Image analysis error:', error);
     res.status(500).json({
       error: "Image analysis failed",
       details: error.message
@@ -836,7 +934,7 @@ app.get('/test-data', async (req, res) => {
       hasData: stats.totalVectorCount > 0
     });
   } catch (error) {
-    console.error('❌ Test data error:', error);
+    console.error('Test data error:', error);
     res.status(500).json({
       error: 'Failed to check index stats',
       details: error.message
@@ -861,7 +959,8 @@ app.get('/debug-vectors', async (req, res) => {
       title: match.metadata?.title,
       type: match.metadata?.type,
       score: match.score,
-      hasImages: !!(match.metadata?.primary_image || match.metadata?.all_images)
+      hasImages: !!(match.metadata?.primary_image || match.metadata?.all_images),
+      imageAnalyzed: !!match.metadata?.image_analysis
     })) || [];
     
     res.json({
@@ -871,7 +970,7 @@ app.get('/debug-vectors', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('❌ Debug vectors error:', error);
+    console.error('Debug vectors error:', error);
     res.status(500).json({
       error: 'Failed to debug vectors',
       details: error.message
@@ -886,18 +985,18 @@ app.get('/debug-vectors', async (req, res) => {
 // Webhook handler for Contentstack content changes
 app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
   try {
-    console.log('🔔 Received Contentstack webhook:', JSON.stringify(req.body, null, 2));
+    console.log('Received Contentstack webhook:', JSON.stringify(req.body, null, 2));
     
     const { event, data, module } = req.body;
     
     if (!event || !data) {
-      console.log('❌ Invalid webhook payload - missing event or data');
+      console.log('Invalid webhook payload - missing event or data');
       return res.status(400).json({ error: 'Invalid webhook payload' });
     }
 
     // Handle asset events separately
     if (module === 'asset' || (data.asset && data.asset.uid)) {
-      console.log(`📷 Asset event: ${event} for asset ${data.asset?.uid || data.uid}`);
+      console.log(`Asset event: ${event} for asset ${data.asset?.uid || data.uid}`);
       return res.status(200).json({ 
         success: true, 
         message: 'Asset webhook received but not processed',
@@ -922,7 +1021,7 @@ app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
       entryUid = data.uid;
       locale = data.locale || 'en-us';
     } else {
-      console.log('❌ Unsupported webhook payload structure:', { 
+      console.log('Unsupported webhook payload structure:', { 
         event, 
         dataKeys: Object.keys(data), 
         module,
@@ -932,7 +1031,7 @@ app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
       
       // Check if this might be an entry without content_type_uid
       if (data.uid && !data.content_type_uid && !data.asset) {
-        console.log('🔍 Entry-like payload without content_type_uid, attempting to fetch from Contentstack...');
+        console.log('Entry-like payload without content_type_uid, attempting to fetch from Contentstack...');
         
         try {
           // Try to determine content type by fetching the entry
@@ -954,20 +1053,20 @@ app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
           }
           
           if (foundEntry && foundContentType) {
-            console.log(`✅ Found entry ${data.uid} in content type ${foundContentType}`);
+            console.log(`Found entry ${data.uid} in content type ${foundContentType}`);
             entryData = foundEntry;
             contentType = foundContentType;
             entryUid = data.uid;
             locale = foundEntry.locale || 'en-us';
           } else {
-            console.log(`❌ Could not find entry ${data.uid} in any content type`);
+            console.log(`Could not find entry ${data.uid} in any content type`);
             return res.status(404).json({ 
               error: 'Entry not found in any content type',
               uid: data.uid
             });
           }
         } catch (fetchError) {
-          console.error('❌ Failed to fetch entry details:', fetchError.message);
+          console.error('Failed to fetch entry details:', fetchError.message);
           return res.status(500).json({
             error: 'Failed to determine content type',
             details: fetchError.message
@@ -981,10 +1080,10 @@ app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
       }
     }
 
-    console.log(`📝 Processing webhook: ${event} for ${contentType}:${entryUid} (${locale})`);
+    console.log(`Processing webhook: ${event} for ${contentType}:${entryUid} (${locale})`);
 
     // Debug the webhook data structure
-    console.log(`🔍 Webhook entry data structure:`, {
+    console.log(`Webhook entry data structure:`, {
       uid: entryData.uid,
       title: entryData.title,
       availableFields: Object.keys(entryData).filter(key => !key.startsWith('_')),
@@ -1022,11 +1121,11 @@ app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
       case 'asset.update':
       case 'asset.unpublish':
       case 'asset.delete':
-        console.log(`📷 Asset event handled: ${event}`);
+        console.log(`Asset event handled: ${event}`);
         break;
         
       default:
-        console.log(`⚠️ Unhandled webhook event: ${event}`);
+        console.log(`Unhandled webhook event: ${event}`);
     }
 
     res.status(200).json({ 
@@ -1039,7 +1138,7 @@ app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Webhook processing error:', error);
+    console.error('Webhook processing error:', error);
     res.status(500).json({ 
       error: 'Webhook processing failed', 
       details: error.message,
@@ -1075,7 +1174,7 @@ app.post('/api/reindex/:contentType/:entryUid', authenticateWebhook, async (req,
     const { contentType, entryUid } = req.params;
     const { locale = 'en-us' } = req.body;
 
-    console.log(`🔄 Manual reindex requested for ${contentType}:${entryUid}`);
+    console.log(`Manual reindex requested for ${contentType}:${entryUid}`);
 
     // Fetch entry from Contentstack
     const entry = await Stack.ContentType(contentType).Entry(entryUid).toJSON().fetch();
@@ -1101,7 +1200,7 @@ app.post('/api/reindex/:contentType/:entryUid', authenticateWebhook, async (req,
     });
 
   } catch (error) {
-    console.error('❌ Manual reindex error:', error);
+    console.error('Manual reindex error:', error);
     res.status(500).json({
       error: 'Manual reindex failed',
       details: error.message
@@ -1115,7 +1214,7 @@ app.post('/api/reindex-content-type/:contentType', authenticateWebhook, async (r
     const { contentType } = req.params;
     const { locale = 'en-us', limit = 100 } = req.body;
 
-    console.log(`🔄 Bulk reindex requested for content type: ${contentType}`);
+    console.log(`Bulk reindex requested for content type: ${contentType}`);
 
     // Fetch entries from Contentstack
     const query = Stack.ContentType(contentType).Query().limit(limit);
@@ -1144,14 +1243,14 @@ app.post('/api/reindex-content-type/:contentType', authenticateWebhook, async (r
       try {
         await reindexEntry(entry, contentType, locale, index);
         successCount++;
-        console.log(`✅ Reindexed: ${entry.uid}`);
+        console.log(`Reindexed: ${entry.uid}`);
       } catch (error) {
         errorCount++;
         errors.push({
           uid: entry.uid,
           error: error.message
         });
-        console.error(`❌ Failed to reindex ${entry.uid}:`, error.message);
+        console.error(`Failed to reindex ${entry.uid}:`, error.message);
       }
     }
 
@@ -1167,7 +1266,7 @@ app.post('/api/reindex-content-type/:contentType', authenticateWebhook, async (r
     });
 
   } catch (error) {
-    console.error('❌ Bulk reindex error:', error);
+    console.error('Bulk reindex error:', error);
     res.status(500).json({
       error: 'Bulk reindex failed',
       details: error.message
@@ -1177,7 +1276,7 @@ app.post('/api/reindex-content-type/:contentType', authenticateWebhook, async (r
 
 // Error handling middleware
 app.use((error, req, res, next) => {
-  console.error('🚨 Unhandled error:', error);
+  console.error('Unhandled error:', error);
   res.status(500).json({
     error: 'Internal server error',
     details: process.env.NODE_ENV === 'development' ? error.message : undefined
@@ -1200,17 +1299,17 @@ export default app;
 if (process.env.NODE_ENV !== 'production') {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {
-    console.log(`🚀 Server running on http://localhost:${PORT}`);
-    console.log(`📊 Health check available at: http://localhost:${PORT}/health`);
-    console.log(`🔍 Search endpoint: http://localhost:${PORT}/search`);
-    console.log(`🖼️ Image analysis endpoint: http://localhost:${PORT}/analyze-image`);
-    console.log(`🧪 Test data endpoint: http://localhost:${PORT}/test-data`);
-    console.log(`🐛 Debug vectors endpoint: http://localhost:${PORT}/debug-vectors`);
-    console.log(`🔧 Debug Contentstack endpoint: http://localhost:${PORT}/debug-contentstack/:contentType`);
-    console.log(`🔗 Webhook endpoint: http://localhost:${PORT}/api/webhook/contentstack`);
-    console.log(`🔄 Manual reindex endpoint: http://localhost:${PORT}/api/reindex/:contentType/:entryUid`);
-    console.log(`🌍 Contentstack region: ${process.env.CONTENTSTACK_REGION || 'US'}`);
-    console.log(`🤖 Features enabled:`);
+    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Health check available at: http://localhost:${PORT}/health`);
+    console.log(`Search endpoint: http://localhost:${PORT}/search`);
+    console.log(`Image analysis endpoint: http://localhost:${PORT}/analyze-image`);
+    console.log(`Test data endpoint: http://localhost:${PORT}/test-data`);
+    console.log(`Debug vectors endpoint: http://localhost:${PORT}/debug-vectors`);
+    console.log(`Debug Contentstack endpoint: http://localhost:${PORT}/debug-contentstack/:contentType`);
+    console.log(`Webhook endpoint: http://localhost:${PORT}/api/webhook/contentstack`);
+    console.log(`Manual reindex endpoint: http://localhost:${PORT}/api/reindex/:contentType/:entryUid`);
+    console.log(`Contentstack region: ${process.env.CONTENTSTACK_REGION || 'US'}`);
+    console.log(`Features enabled:`);
     console.log(`   - Semantic search: ✅`);
     console.log(`   - Image analysis: ${openai ? '✅ (with gpt-4o-mini)' : '❌ (OpenAI API key not configured)'}`);
     console.log(`   - Multimodal search: ✅`);
@@ -1218,5 +1317,6 @@ if (process.env.NODE_ENV !== 'production') {
     console.log(`   - Webhook integration: ✅`);
     console.log(`   - Real-time sync: ✅`);
     console.log(`   - Enhanced asset handling: ✅`);
+    console.log(`   - Enhanced content type mapping: ✅`);
   });
 }
