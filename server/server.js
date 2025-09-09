@@ -88,19 +88,44 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+
+
+
 // Helper functions for image extraction and analysis
 function extractImageUrls(entry) {
   const images = [];
   
-  // Common image field names
-  const imageFields = ['image', 'featured_image', 'banner_image', 'thumbnail', 'photo', 'picture', 'media'];
+  // Common image field names including your specific field names
+  const imageFields = [
+    'image', 'featured_image', 'banner_image', 'thumbnail', 'photo', 'picture', 'media',
+    'product_image', 'media_file', 'asset', 'file'
+  ];
   
+  // Debug: Log what we find in each field
   imageFields.forEach(field => {
-    if (entry[field]) {
-      if (typeof entry[field] === 'string' && entry[field].includes('contentstack.io')) {
-        images.push(ensureHttpsUrl(entry[field]));
-      } else if (entry[field].url) {
-        images.push(ensureHttpsUrl(entry[field].url));
+    if (entry.hasOwnProperty(field)) {
+      console.log(`      DEBUG: Field '${field}' exists with value:`, JSON.stringify(entry[field], null, 2));
+      
+      if (entry[field]) {
+        if (typeof entry[field] === 'string' && entry[field].includes('contentstack.io')) {
+          console.log(`      DEBUG: Found direct URL in ${field}: ${entry[field]}`);
+          images.push(ensureHttpsUrl(entry[field]));
+        } else if (entry[field].url) {
+          console.log(`      DEBUG: Found URL property in ${field}: ${entry[field].url}`);
+          // Only include if it's an image file, not PDF or other documents
+          if (isImageUrl(entry[field].url)) {
+            images.push(ensureHttpsUrl(entry[field].url));
+          }
+        } else if (typeof entry[field] === 'object') {
+          console.log(`      DEBUG: ${field} is an object, checking for nested URLs...`);
+          // Check for nested URL structures
+          if (entry[field].href && isImageUrl(entry[field].href)) {
+            console.log(`      DEBUG: Found href in ${field}: ${entry[field].href}`);
+            images.push(ensureHttpsUrl(entry[field].href));
+          }
+        }
+      } else {
+        console.log(`      DEBUG: Field '${field}' is null or empty`);
       }
     }
   });
@@ -108,9 +133,9 @@ function extractImageUrls(entry) {
   // Handle image arrays
   if (entry.images && Array.isArray(entry.images)) {
     entry.images.forEach(img => {
-      if (typeof img === 'string' && img.includes('contentstack.io')) {
+      if (typeof img === 'string' && img.includes('contentstack.io') && isImageUrl(img)) {
         images.push(ensureHttpsUrl(img));
-      } else if (img && img.url) {
+      } else if (img && img.url && isImageUrl(img.url)) {
         images.push(ensureHttpsUrl(img.url));
       }
     });
@@ -119,7 +144,7 @@ function extractImageUrls(entry) {
   // Handle gallery or media arrays
   if (entry.gallery && Array.isArray(entry.gallery)) {
     entry.gallery.forEach(item => {
-      if (item && item.url) {
+      if (item && item.url && isImageUrl(item.url)) {
         images.push(ensureHttpsUrl(item.url));
       }
     });
@@ -128,15 +153,16 @@ function extractImageUrls(entry) {
   return [...new Set(images)]; // Remove duplicates
 }
 
-function ensureHttpsUrl(url) {
-  if (!url) return null;
-  if (url.startsWith('http://')) {
-    return url.replace('http://', 'https://');
-  }
-  if (url.startsWith('//')) {
-    return `https:${url}`;
-  }
-  return url;
+
+
+// Helper function to check if URL is an image
+function isImageUrl(url) {
+  if (!url) return false;
+  const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
+  const urlLower = url.toLowerCase();
+  return imageExtensions.some(ext => urlLower.includes(ext)) || 
+         urlLower.includes('/images/') || 
+         urlLower.includes('image');
 }
 
 function analyzeImageFields(entry) {
