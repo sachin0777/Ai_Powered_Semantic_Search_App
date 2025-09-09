@@ -20,7 +20,13 @@ import {
   Sparkles, 
   ExternalLink, 
   Tag,
-  Loader2
+  Loader2,
+  Globe,
+  Activity,
+  Layers,
+  ArrowRight,
+  BarChart3,
+  Compass
 } from 'lucide-react';
 
 const EnhancedSemanticSearch = () => {
@@ -36,6 +42,7 @@ const EnhancedSemanticSearch = () => {
   const [searchContext, setSearchContext] = useState(null);
   const [extensionConfig, setExtensionConfig] = useState(null);
   const [isContentstackApp, setIsContentstackApp] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
 
   // Initialize Contentstack extension if available
   useEffect(() => {
@@ -44,7 +51,6 @@ const EnhancedSemanticSearch = () => {
       window.ContentstackUIExtension.init().then((extension) => {
         console.log('Contentstack extension initialized:', extension);
         
-        // Get app configuration
         extension.getConfig().then((config) => {
           console.log('App config:', config);
           setExtensionConfig(config);
@@ -52,10 +58,8 @@ const EnhancedSemanticSearch = () => {
           console.warn('Failed to get app config:', err);
         });
 
-        // Set frame height
         extension.frame.updateHeight(window.innerHeight);
         
-        // Listen for resize events
         window.addEventListener('resize', () => {
           extension.frame.updateHeight(window.innerHeight);
         });
@@ -66,16 +70,16 @@ const EnhancedSemanticSearch = () => {
     }
   }, []);
 
-  // Configuration - prioritize environment variable, fallback to extension config
+  // Configuration
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 
     (extensionConfig?.backend_url) || 
     'https://ai-powered-semantic-search-app.vercel.app';
 
   const contentTypes = [
-    { id: 'article', name: 'Articles', icon: FileText, count: 245 },
-    { id: 'product', name: 'Products', icon: Star, count: 128 },
-    { id: 'media', name: 'Media', icon: Image, count: 89 },
-    { id: 'video', name: 'Videos', icon: Video, count: 34 }
+    { id: 'article', name: 'Articles', icon: FileText, count: 245, color: 'blue' },
+    { id: 'product', name: 'Products', icon: Star, count: 128, color: 'yellow' },
+    { id: 'media', name: 'Media', icon: Image, count: 89, color: 'purple' },
+    { id: 'video', name: 'Videos', icon: Video, count: 34, color: 'green' }
   ];
 
   const locales = [
@@ -234,15 +238,20 @@ const EnhancedSemanticSearch = () => {
 
   // Utility functions
   const getSimilarityColor = (score) => {
-    if (score >= 0.9) return 'text-green-600 bg-green-50';
-    if (score >= 0.8) return 'text-blue-600 bg-blue-50';
-    if (score >= 0.7) return 'text-yellow-600 bg-yellow-50';
-    return 'text-gray-600 bg-gray-50';
+    if (score >= 0.9) return 'text-emerald-700 bg-emerald-100 border-emerald-200';
+    if (score >= 0.8) return 'text-blue-700 bg-blue-100 border-blue-200';
+    if (score >= 0.7) return 'text-amber-700 bg-amber-100 border-amber-200';
+    return 'text-slate-700 bg-slate-100 border-slate-200';
   };
 
   const getContentTypeIcon = (type) => {
     const contentType = contentTypes.find(ct => ct.id === type);
     return contentType ? contentType.icon : FileText;
+  };
+
+  const getContentTypeColor = (type) => {
+    const contentType = contentTypes.find(ct => ct.id === type);
+    return contentType ? contentType.color : 'slate';
   };
 
   const getFullImageUrl = (imageUrl) => {
@@ -296,79 +305,108 @@ const EnhancedSemanticSearch = () => {
     if (!src) return null;
 
     return (
-      <div className={`relative ${className}`}>
+      <div className={`relative overflow-hidden group ${className}`}>
         {isLoading && (
-          <div className={`absolute inset-0 bg-gray-100 rounded-lg flex items-center justify-center ${className}`}>
-            <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+          <div className={`absolute inset-0 bg-gradient-to-br from-slate-100 to-slate-200 rounded-xl flex items-center justify-center ${className}`}>
+            <div className="flex flex-col items-center space-y-2">
+              <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+              <div className="w-8 h-1 bg-slate-300 rounded-full overflow-hidden">
+                <div className="w-full h-full bg-gradient-to-r from-blue-400 to-purple-400 rounded-full animate-pulse"></div>
+              </div>
+            </div>
           </div>
         )}
         <img 
           src={getFullImageUrl(src)}
           alt={alt}
-          className={`${className} ${isLoading ? 'opacity-0' : 'opacity-100'} transition-opacity duration-300 ${hasError ? 'hidden' : ''}`}
+          className={`${className} ${isLoading ? 'opacity-0' : 'opacity-100'} transition-all duration-500 hover:scale-105 ${hasError ? 'hidden' : ''}`}
           onLoad={handleLoad}
           onError={handleError}
           loading="lazy"
         />
         {hasError && (
-          <div className={`${className} bg-gray-100 rounded-lg flex items-center justify-center border border-gray-200`}>
-            <div className="text-gray-400 text-center p-2">
-              <ImageIcon className="w-6 h-6 mx-auto mb-1" />
-              <span className="text-xs">Image unavailable</span>
+          <div className={`${className} bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl flex items-center justify-center border-2 border-dashed border-slate-300`}>
+            <div className="text-slate-400 text-center p-4">
+              <ImageIcon className="w-8 h-8 mx-auto mb-2 opacity-60" />
+              <span className="text-xs font-medium">Image unavailable</span>
             </div>
           </div>
         )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-xl"></div>
       </div>
     );
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-purple-50/30">
+      {/* Animated Background Elements */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-blue-400/10 to-purple-400/10 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-tr from-purple-400/10 to-pink-400/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-to-r from-cyan-400/5 to-blue-400/5 rounded-full blur-3xl animate-pulse delay-500"></div>
+      </div>
+
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4">
+      <div className="relative bg-white/80 backdrop-blur-xl border-b border-slate-200/50 sticky top-0 z-50">
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-600/5 via-purple-600/5 to-pink-600/5"></div>
+        <div className="relative max-w-7xl mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
-                  <Brain className="w-5 h-5 text-white" />
+            <div className="flex items-center space-x-6">
+              <div className="flex items-center space-x-3">
+                <div className="relative">
+                  <div className="w-12 h-12 bg-gradient-to-br from-blue-600 via-purple-600 to-pink-600 rounded-2xl flex items-center justify-center shadow-lg">
+                    <Brain className="w-6 h-6 text-white" />
+                  </div>
+                  <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-400 rounded-full border-2 border-white animate-pulse"></div>
                 </div>
-                <h1 className="text-xl font-semibold text-gray-900">
-                  AI-Powered Semantic Search
-                  {isContentstackApp && (
-                    <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
-                      Contentstack App
-                    </span>
-                  )}
-                </h1>
+                <div>
+                  <h1 className="text-2xl font-bold bg-gradient-to-r from-slate-900 via-blue-900 to-purple-900 bg-clip-text text-transparent">
+                    Neural Search
+                  </h1>
+                  <p className="text-sm text-slate-600">AI-Powered Content Discovery</p>
+                </div>
+                {isContentstackApp && (
+                  <div className="flex items-center space-x-1 bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700 px-3 py-1.5 rounded-full text-xs font-medium">
+                    <Layers className="w-3 h-3" />
+                    <span>Contentstack App</span>
+                  </div>
+                )}
               </div>
-              <div className="hidden sm:flex items-center space-x-1 bg-gradient-to-r from-blue-50 to-purple-50 text-blue-700 px-3 py-1 rounded-full text-sm">
-                <Eye className="w-4 h-4" />
-                <span>Multimodal AI</span>
+              <div className="hidden lg:flex items-center space-x-4">
+                <div className="flex items-center space-x-1 bg-gradient-to-r from-purple-50 to-pink-50 text-purple-700 px-4 py-2 rounded-full text-sm font-medium">
+                  <Eye className="w-4 h-4" />
+                  <span>Multimodal AI</span>
+                </div>
+                <div className="flex items-center space-x-1 bg-gradient-to-r from-emerald-50 to-cyan-50 text-emerald-700 px-4 py-2 rounded-full text-sm font-medium">
+                  <Sparkles className="w-4 h-4" />
+                  <span>Visual Search</span>
+                </div>
               </div>
             </div>
-            <div className="flex items-center space-x-3">
-              <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-3">
                 {serverStatus === 'online' ? (
-                  <div className="flex items-center space-x-1 text-green-600">
+                  <div className="flex items-center space-x-2 text-emerald-600 bg-emerald-50 px-3 py-2 rounded-full">
+                    <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
                     <Wifi className="w-4 h-4" />
-                    <span className="text-xs">Online</span>
+                    <span className="text-sm font-medium">Online</span>
                   </div>
                 ) : serverStatus === 'offline' ? (
-                  <div className="flex items-center space-x-1 text-red-600">
+                  <div className="flex items-center space-x-2 text-red-600 bg-red-50 px-3 py-2 rounded-full">
+                    <div className="w-2 h-2 bg-red-400 rounded-full"></div>
                     <WifiOff className="w-4 h-4" />
-                    <span className="text-xs">Offline</span>
+                    <span className="text-sm font-medium">Offline</span>
                   </div>
                 ) : (
-                  <div className="flex items-center space-x-1 text-yellow-600">
+                  <div className="flex items-center space-x-2 text-amber-600 bg-amber-50 px-3 py-2 rounded-full">
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span className="text-xs">Checking...</span>
+                    <span className="text-sm font-medium">Checking...</span>
                   </div>
                 )}
               </div>
               <button 
                 onClick={checkServerStatus}
-                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-2.5 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-all duration-200 hover:scale-105"
                 title="Refresh server status"
               >
                 <Settings className="w-5 h-5" />
@@ -380,185 +418,228 @@ const EnhancedSemanticSearch = () => {
 
       {/* Error Banner */}
       {error && (
-        <div className="bg-red-50 border-l-4 border-red-400 p-4 mx-6 mt-4 rounded-r-lg">
-          <div className="flex items-center">
-            <AlertCircle className="w-5 h-5 text-red-400 mr-3" />
-            <div className="flex-1">
-              <p className="text-sm text-red-700">{error}</p>
-              {serverStatus === 'offline' && (
-                <div className="mt-2 space-y-1">
-                  <button 
-                    onClick={checkServerStatus}
-                    className="text-xs text-red-600 hover:text-red-800 underline block"
-                  >
-                    Retry connection
-                  </button>
-                  <p className="text-xs text-red-600">Backend URL: {API_BASE_URL}</p>
+        <div className="relative mx-6 mt-6 bg-gradient-to-r from-red-50 to-pink-50 border border-red-200 rounded-2xl shadow-lg overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-r from-red-600/5 to-pink-600/5"></div>
+          <div className="relative p-6">
+            <div className="flex items-start space-x-4">
+              <div className="flex-shrink-0">
+                <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
+                  <AlertCircle className="w-5 h-5 text-red-600" />
                 </div>
-              )}
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-semibold text-red-900 mb-1">Connection Issue</h3>
+                <p className="text-sm text-red-700 leading-relaxed">{error}</p>
+                {serverStatus === 'offline' && (
+                  <div className="mt-4 flex items-center space-x-4">
+                    <button 
+                      onClick={checkServerStatus}
+                      className="text-xs text-red-700 hover:text-red-900 underline font-medium"
+                    >
+                      Retry connection
+                    </button>
+                    <p className="text-xs text-red-600">Backend: {API_BASE_URL}</p>
+                  </div>
+                )}
+              </div>
+              <button 
+                onClick={() => setError(null)}
+                className="flex-shrink-0 text-red-400 hover:text-red-600 hover:bg-red-100 rounded-lg p-1 transition-colors"
+              >
+                ×
+              </button>
             </div>
-            <button 
-              onClick={() => setError(null)}
-              className="ml-auto text-red-400 hover:text-red-600 text-xl font-bold px-2"
-            >
-              ×
-            </button>
           </div>
         </div>
       )}
 
       {/* Search Context Banner */}
       {searchContext && showResults && (
-        <div className={`mx-6 mt-4 p-4 rounded-lg ${
+        <div className={`relative mx-6 mt-6 rounded-2xl shadow-lg overflow-hidden ${
           searchContext.isVisualQuery 
-            ? 'bg-purple-50 border-l-4 border-purple-400' 
-            : 'bg-blue-50 border-l-4 border-blue-400'
+            ? 'bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200' 
+            : 'bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200'
         }`}>
-          <div className="flex items-center space-x-3">
-            {searchContext.isVisualQuery ? (
-              <Eye className="w-5 h-5 text-purple-600" />
-            ) : (
-              <Brain className="w-5 h-5 text-blue-600" />
-            )}
-            <div className="flex-1">
-              <p className={`text-sm font-medium ${
-                searchContext.isVisualQuery ? 'text-purple-800' : 'text-blue-800'
+          <div className={`absolute inset-0 ${
+            searchContext.isVisualQuery 
+              ? 'bg-gradient-to-r from-purple-600/5 to-pink-600/5' 
+              : 'bg-gradient-to-r from-blue-600/5 to-cyan-600/5'
+          }`}></div>
+          <div className="relative p-6">
+            <div className="flex items-start space-x-4">
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                searchContext.isVisualQuery ? 'bg-purple-100' : 'bg-blue-100'
               }`}>
-                {searchContext.isVisualQuery 
-                  ? `Visual Query Detected (${Math.round(searchContext.visualConfidence * 100)}% confidence)`
-                  : 'Text-based Semantic Search'
-                }
-              </p>
-              <p className={`text-xs ${
-                searchContext.isVisualQuery ? 'text-purple-600' : 'text-blue-600'
-              }`}>
-                {searchContext.isVisualQuery 
-                  ? `Found ${searchContext.multimodalResultsCount} results with images • ${searchContext.analyzedImageCount} with AI-analyzed content • ${searchContext.totalImagesFound} total images`
-                  : 'Analyzing content meaning and context'
-                }
-              </p>
-              {searchContext.matchedVisualKeywords && searchContext.matchedVisualKeywords.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {searchContext.matchedVisualKeywords.slice(0, 5).map((keyword, idx) => (
-                    <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-purple-100 text-purple-700">
-                      {keyword}
-                    </span>
-                  ))}
-                </div>
-              )}
+                {searchContext.isVisualQuery ? (
+                  <Eye className="w-6 h-6 text-purple-600" />
+                ) : (
+                  <Brain className="w-6 h-6 text-blue-600" />
+                )}
+              </div>
+              <div className="flex-1">
+                <h3 className={`text-lg font-semibold mb-2 ${
+                  searchContext.isVisualQuery ? 'text-purple-900' : 'text-blue-900'
+                }`}>
+                  {searchContext.isVisualQuery 
+                    ? `Visual Query Detected (${Math.round(searchContext.visualConfidence * 100)}% confidence)`
+                    : 'Semantic Search Analysis'
+                  }
+                </h3>
+                <p className={`text-sm mb-3 ${
+                  searchContext.isVisualQuery ? 'text-purple-700' : 'text-blue-700'
+                }`}>
+                  {searchContext.isVisualQuery 
+                    ? `Found ${searchContext.multimodalResultsCount} results with images • ${searchContext.analyzedImageCount} with AI analysis • ${searchContext.totalImagesFound} total images`
+                    : 'Understanding content meaning and context relationships'
+                  }
+                </p>
+                {searchContext.matchedVisualKeywords && searchContext.matchedVisualKeywords.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {searchContext.matchedVisualKeywords.slice(0, 5).map((keyword, idx) => (
+                      <span key={idx} className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-white/80 text-purple-800 border border-purple-200">
+                        {keyword}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
       )}
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="relative max-w-7xl mx-auto px-6 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           
           {/* Search Section */}
           <div className="lg:col-span-3">
             {/* Search Input */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-              <div className="flex items-center space-x-4 mb-4">
-                <Target className="w-6 h-6 text-blue-600" />
-                <h2 className="text-lg font-medium text-gray-900">Multimodal Content Search</h2>
-                <div className="flex items-center space-x-1 bg-purple-100 text-purple-700 px-2 py-1 rounded text-xs">
-                  <Sparkles className="w-3 h-3" />
-                  <span>AI Vision</span>
-                </div>
-              </div>
-              
+            <div className="relative bg-white/90 backdrop-blur-xl rounded-3xl shadow-xl border border-slate-200/50 p-8 mb-8 overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 via-purple-50/30 to-pink-50/50"></div>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <Search className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    if (error) setError(null);
-                  }}
-                  onKeyPress={handleKeyPress}
-                  placeholder="Try: 'red sneakers with white logo' or 'blue product packaging'"
-                  className="block w-full pl-12 pr-4 py-4 border border-gray-300 rounded-lg text-base placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
-                  disabled={serverStatus === 'offline'}
-                />
-                <button
-                  onClick={handleSearch}
-                  disabled={!searchQuery.trim() || isSearching || serverStatus === 'offline'}
-                  className="absolute inset-y-0 right-0 pr-4 flex items-center"
-                >
-                  <div className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                    searchQuery.trim() && !isSearching && serverStatus === 'online'
-                      ? 'bg-blue-600 text-white hover:bg-blue-700 cursor-pointer'
-                      : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  }`}>
-                    {isSearching ? (
-                      <div className="flex items-center space-x-2">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Searching...</span>
-                      </div>
-                    ) : (
-                      'Search'
-                    )}
+                <div className="flex items-center space-x-4 mb-6">
+                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-2xl flex items-center justify-center shadow-lg">
+                    <Target className="w-6 h-6 text-white" />
                   </div>
-                </button>
-              </div>
-              
-              <div className="mt-4 flex items-center justify-between">
-                <div className="flex items-center text-sm text-gray-500">
-                  <Brain className="w-4 h-4 mr-1" />
-                  <span>AI understands both text content and visual elements</span>
+                  <div>
+                    <h2 className="text-2xl font-bold text-slate-900">Intelligent Content Discovery</h2>
+                    <p className="text-slate-600">Search using natural language and visual descriptions</p>
+                  </div>
+                  <div className="hidden sm:flex items-center space-x-1 bg-gradient-to-r from-purple-100 to-pink-100 text-purple-700 px-4 py-2 rounded-full text-sm font-medium">
+                    <Sparkles className="w-4 h-4" />
+                    <span>AI Vision</span>
+                  </div>
                 </div>
-                <div className="flex items-center text-xs text-purple-600">
-                  <ImageIcon className="w-3 h-3 mr-1" />
-                  <span>Image analysis enabled</span>
-                </div>
-              </div>
-              
-              {/* Visual Search Examples */}
-              <div className="mt-4 p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg">
-                <h4 className="text-sm font-medium text-gray-700 mb-2 flex items-center">
-                  <Eye className="w-4 h-4 mr-2" />
-                  Try these visual search examples:
-                </h4>
-                <div className="flex flex-wrap gap-2">
-                  {visualSearchExamples.map((example, idx) => (
+                
+                <div className={`relative transition-all duration-300 ${searchFocused ? 'scale-[1.02]' : ''}`}>
+                  <div className={`absolute -inset-1 bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 rounded-2xl blur opacity-20 transition-opacity duration-300 ${searchFocused ? 'opacity-40' : ''}`}></div>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-6 flex items-center pointer-events-none">
+                      <Search className={`h-6 w-6 transition-colors duration-200 ${searchFocused ? 'text-blue-500' : 'text-slate-400'}`} />
+                    </div>
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => {
+                        setSearchQuery(e.target.value);
+                        if (error) setError(null);
+                      }}
+                      onKeyPress={handleKeyPress}
+                      onFocus={() => setSearchFocused(true)}
+                      onBlur={() => setSearchFocused(false)}
+                      placeholder="Try: 'red sneakers with white logo' or 'sustainable fashion articles'"
+                      className="block w-full pl-16 pr-32 py-6 bg-white border-2 border-slate-200 rounded-2xl text-lg placeholder-slate-500 focus:outline-none focus:ring-4 focus:ring-blue-500/20 focus:border-blue-400 disabled:bg-slate-100 disabled:cursor-not-allowed transition-all duration-200"
+                      disabled={serverStatus === 'offline'}
+                    />
                     <button
-                      key={idx}
-                      onClick={() => handleExampleClick(example)}
-                      className="px-3 py-1 text-xs bg-white border border-purple-200 rounded-full hover:bg-purple-50 hover:border-purple-300 transition-colors"
+                      onClick={handleSearch}
+                      disabled={!searchQuery.trim() || isSearching || serverStatus === 'offline'}
+                      className="absolute inset-y-0 right-0 pr-4 flex items-center"
                     >
-                      {example}
+                      <div className={`px-6 py-3 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                        searchQuery.trim() && !isSearching && serverStatus === 'online'
+                          ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 shadow-lg hover:shadow-xl transform hover:scale-105'
+                          : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                      }`}>
+                        {isSearching ? (
+                          <div className="flex items-center space-x-2">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Searching...</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center space-x-2">
+                            <span>Search</span>
+                            <ArrowRight className="w-4 h-4" />
+                          </div>
+                        )}
+                      </div>
                     </button>
-                  ))}
+                  </div>
+                </div>
+                
+                <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="flex items-center justify-center space-x-3 text-slate-600 bg-slate-50/80 rounded-2xl p-4">
+                    <Brain className="w-5 h-5 text-blue-500" />
+                    <span className="text-sm font-medium">AI understands context and meaning</span>
+                  </div>
+                  <div className="flex items-center justify-center space-x-3 text-slate-600 bg-slate-50/80 rounded-2xl p-4">
+                    <ImageIcon className="w-5 h-5 text-purple-500" />
+                    <span className="text-sm font-medium">Visual content analysis enabled</span>
+                  </div>
+                </div>
+                
+                {/* Visual Search Examples */}
+                <div className="mt-8 p-6 bg-gradient-to-br from-purple-50/80 to-pink-50/80 rounded-2xl border border-purple-100/50">
+                  <h4 className="text-sm font-semibold text-slate-800 mb-4 flex items-center">
+                    <Eye className="w-5 h-5 mr-2 text-purple-500" />
+                    Try these visual search examples:
+                  </h4>
+                  <div className="flex flex-wrap gap-2">
+                    {visualSearchExamples.map((example, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => handleExampleClick(example)}
+                        className="px-4 py-2 text-sm bg-white/80 border border-purple-200 rounded-full hover:bg-purple-50 hover:border-purple-300 hover:shadow-md transition-all duration-200 transform hover:scale-105"
+                      >
+                        {example}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
 
             {/* Results Section */}
             {showResults && (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-                <div className="p-6 border-b border-gray-200">
+              <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-xl border border-slate-200/50 overflow-hidden">
+                <div className="p-8 border-b border-slate-200/50 bg-gradient-to-r from-slate-50/50 to-blue-50/30">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-medium text-gray-900">
-                      Search Results
-                      {!isSearching && searchResults.length > 0 && (
-                        <span className="ml-2 text-sm font-normal text-gray-500">
-                          ({searchResults.length} results)
-                        </span>
-                      )}
-                    </h3>
-                    <div className="flex items-center space-x-4 text-sm text-gray-500">
-                      <div className="flex items-center space-x-1">
-                        <TrendingUp className="w-4 h-4" />
-                        <span>Ranked by similarity</span>
+                    <div className="flex items-center space-x-4">
+                      <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-cyan-500 rounded-xl flex items-center justify-center">
+                        <BarChart3 className="w-5 h-5 text-white" />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-bold text-slate-900">
+                          Search Results
+                          {!isSearching && searchResults.length > 0 && (
+                            <span className="ml-2 text-lg font-normal text-slate-600">
+                              ({searchResults.length} results)
+                            </span>
+                          )}
+                        </h3>
+                        <p className="text-slate-600">Ranked by AI relevance score</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-6 text-sm">
+                      <div className="flex items-center space-x-2 text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full">
+                        <TrendingUp className="w-4 h-4 text-emerald-500" />
+                        <span className="font-medium">Smart ranking</span>
                       </div>
                       {searchContext?.hasMultimodalResults && (
-                        <div className="flex items-center space-x-1 text-purple-600">
+                        <div className="flex items-center space-x-2 text-purple-600 bg-purple-100 px-3 py-1.5 rounded-full">
                           <ImageIcon className="w-4 h-4" />
-                          <span>{searchContext.multimodalResultsCount} with images</span>
+                          <span className="font-medium">{searchContext.multimodalResultsCount} with images</span>
                         </div>
                       )}
                     </div>
@@ -566,92 +647,121 @@ const EnhancedSemanticSearch = () => {
                 </div>
 
                 {isSearching ? (
-                  <div className="p-8">
-                    <div className="flex flex-col items-center justify-center space-y-4">
-                      <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-                      <p className="text-gray-500">Analyzing content with multimodal AI...</p>
-                      <p className="text-xs text-gray-400">First request may take longer on serverless functions</p>
+                  <div className="p-12">
+                    <div className="flex flex-col items-center justify-center space-y-6">
+                      <div className="relative">
+                        <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-500 rounded-2xl flex items-center justify-center shadow-lg">
+                          <Loader2 className="w-8 h-8 animate-spin text-white" />
+                        </div>
+                        <div className="absolute -inset-2 bg-gradient-to-br from-blue-400 to-purple-400 rounded-2xl blur opacity-20 animate-pulse"></div>
+                      </div>
+                      <div className="text-center">
+                        <h3 className="text-lg font-semibold text-slate-900 mb-2">Analyzing content with multimodal AI...</h3>
+                        <p className="text-slate-600 mb-1">Processing visual and textual elements</p>
+                        <p className="text-xs text-slate-500">First request may take longer on serverless functions</p>
+                      </div>
+                      <div className="w-48 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                        <div className="w-full h-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 rounded-full animate-pulse"></div>
+                      </div>
                     </div>
                   </div>
                 ) : searchResults.length > 0 ? (
-                  <div className="divide-y divide-gray-200">
-                    {searchResults.map((result) => {
+                  <div className="divide-y divide-slate-100">
+                    {searchResults.map((result, index) => {
                       const IconComponent = getContentTypeIcon(result.contentType || result.type);
                       const primaryImage = result.primaryImage || result.primary_image;
                       const allImages = result.allImages || result.all_images;
+                      const colorScheme = getContentTypeColor(result.contentType || result.type);
                       
                       return (
-                        <div key={result.id} className="p-6 hover:bg-gray-50 transition-colors">
-                          <div className="flex items-start space-x-4">
-                            <div className="flex-shrink-0 w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
-                              <IconComponent className="w-5 h-5 text-blue-600" />
+                        <div key={result.id} className="p-8 hover:bg-gradient-to-r hover:from-slate-50/50 hover:to-blue-50/20 transition-all duration-300 group">
+                          <div className="flex items-start space-x-6">
+                            <div className={`flex-shrink-0 w-14 h-14 bg-gradient-to-br ${
+                              colorScheme === 'blue' ? 'from-blue-100 to-blue-200' :
+                              colorScheme === 'purple' ? 'from-purple-100 to-purple-200' :
+                              colorScheme === 'green' ? 'from-emerald-100 to-emerald-200' :
+                              colorScheme === 'yellow' ? 'from-amber-100 to-amber-200' :
+                              'from-slate-100 to-slate-200'
+                            } rounded-2xl flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow`}>
+                              <IconComponent className={`w-6 h-6 ${
+                                colorScheme === 'blue' ? 'text-blue-600' :
+                                colorScheme === 'purple' ? 'text-purple-600' :
+                                colorScheme === 'green' ? 'text-emerald-600' :
+                                colorScheme === 'yellow' ? 'text-amber-600' :
+                                'text-slate-600'
+                              }`} />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center space-x-3 mb-2 flex-wrap">
-                                <h4 className="text-lg font-medium text-gray-900 truncate">
-                                  {result.title}
-                                </h4>
-                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getSimilarityColor(result.similarity || result.relevance)}`}>
-                                  {Math.round((result.similarity || result.relevance) * 100)}% match
-                                </span>
-                                {(primaryImage || (allImages && allImages.length > 0)) && (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-purple-100 text-purple-700">
-                                    <ImageIcon className="w-3 h-3 mr-1" />
-                                    {allImages && allImages.length > 1 ? `${allImages.length} Images` : 'Image'}
-                                  </span>
-                                )}
-                                {result.visualQueryMatch && (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">
-                                    <Eye className="w-3 h-3 mr-1" />
-                                    Visual Match
-                                  </span>
-                                )}
-                                {result.imageAnalyzed && (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-yellow-100 text-yellow-700">
-                                    <Sparkles className="w-3 h-3 mr-1" />
-                                    AI Analyzed
-                                  </span>
-                                )}
+                              <div className="flex items-start justify-between mb-4">
+                                <div className="flex-1">
+                                  <h4 className="text-xl font-bold text-slate-900 mb-2 group-hover:text-blue-900 transition-colors">
+                                    {result.title}
+                                  </h4>
+                                  <div className="flex items-center space-x-3 flex-wrap gap-2">
+                                    <span className={`inline-flex items-center px-3 py-1.5 rounded-xl text-sm font-semibold border ${getSimilarityColor(result.similarity || result.relevance)}`}>
+                                      <Activity className="w-3 h-3 mr-1" />
+                                      {Math.round((result.similarity || result.relevance) * 100)}% match
+                                    </span>
+                                    {(primaryImage || (allImages && allImages.length > 0)) && (
+                                      <span className="inline-flex items-center px-3 py-1.5 rounded-xl text-sm font-semibold bg-purple-100 text-purple-700 border border-purple-200">
+                                        <ImageIcon className="w-3 h-3 mr-1" />
+                                        {allImages && allImages.length > 1 ? `${allImages.length} Images` : 'Image'}
+                                      </span>
+                                    )}
+                                    {result.visualQueryMatch && (
+                                      <span className="inline-flex items-center px-3 py-1.5 rounded-xl text-sm font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200">
+                                        <Eye className="w-3 h-3 mr-1" />
+                                        Visual Match
+                                      </span>
+                                    )}
+                                    {result.imageAnalyzed && (
+                                      <span className="inline-flex items-center px-3 py-1.5 rounded-xl text-sm font-semibold bg-amber-100 text-amber-700 border border-amber-200">
+                                        <Sparkles className="w-3 h-3 mr-1" />
+                                        AI Analyzed
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
                               </div>
                               
                               {/* Image Display */}
                               {primaryImage && (
-                                <div className="mb-4">
-                                  <div className="flex items-start space-x-3">
+                                <div className="mb-6">
+                                  <div className="flex items-start space-x-4">
                                     <div className="relative">
                                       <ImageWithFallback 
                                         src={primaryImage}
                                         alt={result.title}
-                                        className="w-48 h-36 object-cover rounded-lg border border-gray-200 shadow-sm"
+                                        className="w-64 h-48 object-cover rounded-2xl border border-slate-200 shadow-lg"
                                         result={result}
                                       />
                                       {result.imageAnalyzed && (
-                                        <div className="absolute top-2 left-2 bg-yellow-400 text-yellow-900 px-2 py-1 rounded text-xs font-medium">
+                                        <div className="absolute top-3 left-3 bg-gradient-to-r from-amber-400 to-orange-400 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-lg">
                                           <Sparkles className="w-3 h-3 inline mr-1" />
-                                          AI
+                                          AI Vision
                                         </div>
                                       )}
                                     </div>
                                     
                                     {/* Additional images */}
                                     {allImages && allImages.length > 1 && (
-                                      <div className="flex flex-col space-y-2">
-                                        <div className="text-xs text-gray-500 mb-1">
-                                          +{allImages.length - 1} more
+                                      <div className="flex flex-col space-y-3">
+                                        <div className="text-sm font-medium text-slate-700">
+                                          +{allImages.length - 1} more images
                                         </div>
-                                        <div className="grid grid-cols-2 gap-2 max-w-[120px]">
+                                        <div className="grid grid-cols-2 gap-3 max-w-[140px]">
                                           {allImages.slice(1, 5).map((imageUrl, imgIdx) => (
                                             <ImageWithFallback
                                               key={imgIdx}
                                               src={imageUrl}
                                               alt={`${result.title} ${imgIdx + 2}`}
-                                              className="w-14 h-10 object-cover rounded border border-gray-200"
+                                              className="w-16 h-12 object-cover rounded-xl border border-slate-200 shadow-sm"
                                               result={result}
                                             />
                                           ))}
                                           {allImages.length > 5 && (
-                                            <div className="w-14 h-10 bg-gray-100 rounded border border-gray-200 flex items-center justify-center">
-                                              <span className="text-xs text-gray-500">+{allImages.length - 5}</span>
+                                            <div className="w-16 h-12 bg-gradient-to-br from-slate-100 to-slate-200 rounded-xl border border-slate-200 flex items-center justify-center shadow-sm">
+                                              <span className="text-xs font-semibold text-slate-600">+{allImages.length - 5}</span>
                                             </div>
                                           )}
                                         </div>
@@ -661,12 +771,14 @@ const EnhancedSemanticSearch = () => {
                                   
                                   {/* AI image analysis */}
                                   {result.imageAnalysis && (
-                                    <div className="mt-3 p-3 bg-yellow-50 rounded-lg border-l-4 border-yellow-400">
-                                      <div className="flex items-start space-x-2">
-                                        <Sparkles className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" />
+                                    <div className="mt-4 p-4 bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl border border-amber-200">
+                                      <div className="flex items-start space-x-3">
+                                        <div className="w-8 h-8 bg-gradient-to-br from-amber-400 to-orange-400 rounded-lg flex items-center justify-center flex-shrink-0">
+                                          <Sparkles className="w-4 h-4 text-white" />
+                                        </div>
                                         <div>
-                                          <p className="text-sm font-medium text-yellow-800">AI Vision Analysis:</p>
-                                          <p className="text-sm text-yellow-700 mt-1">{result.imageAnalysis}</p>
+                                          <p className="text-sm font-semibold text-amber-900 mb-1">AI Vision Analysis:</p>
+                                          <p className="text-sm text-amber-800 leading-relaxed">{result.imageAnalysis}</p>
                                         </div>
                                       </div>
                                     </div>
@@ -674,67 +786,78 @@ const EnhancedSemanticSearch = () => {
                                 </div>
                               )}
                               
-                              <p className="text-gray-600 mb-3 line-clamp-3">
+                              <p className="text-slate-700 mb-4 leading-relaxed text-base">
                                 {result.snippet}
                               </p>
                               
                               {/* Metadata */}
-                              <div className="flex items-center space-x-4 text-sm text-gray-500 flex-wrap gap-y-1">
-                                <span className="capitalize">{result.contentType || result.type}</span>
-                                <span>•</span>
-                                <span>{(result.locale || 'en-us').toUpperCase()}</span>
-                                <span>•</span>
-                                <div className="flex items-center space-x-1">
-                                  <Calendar className="w-4 h-4" />
+                              <div className="flex items-center space-x-6 text-sm text-slate-600 flex-wrap gap-y-2 mb-4">
+                                <div className="flex items-center space-x-2">
+                                  <div className="w-2 h-2 bg-slate-400 rounded-full"></div>
+                                  <span className="capitalize font-medium">{result.contentType || result.type}</span>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                  <Globe className="w-4 h-4 text-slate-400" />
+                                  <span className="font-medium">{(result.locale || 'en-us').toUpperCase()}</span>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                  <Calendar className="w-4 h-4 text-slate-400" />
                                   <span>{result.lastModified || result.date}</span>
                                 </div>
                                 {result.price && (
-                                  <>
-                                    <span>•</span>
-                                    <span className="font-medium text-green-600">{formatPrice(result.price)}</span>
-                                  </>
+                                  <div className="flex items-center space-x-2">
+                                    <div className="w-2 h-2 bg-emerald-400 rounded-full"></div>
+                                    <span className="font-semibold text-emerald-600">{formatPrice(result.price)}</span>
+                                  </div>
                                 )}
                                 {result.duration && (
-                                  <>
-                                    <span>•</span>
+                                  <div className="flex items-center space-x-2">
+                                    <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
                                     <span>{formatDuration(result.duration)}</span>
-                                  </>
+                                  </div>
                                 )}
                                 {result.category && (
-                                  <>
-                                    <span>•</span>
-                                    <span className="text-blue-600">{result.category}</span>
-                                  </>
+                                  <div className="flex items-center space-x-2">
+                                    <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
+                                    <span className="font-medium text-purple-600">{result.category}</span>
+                                  </div>
                                 )}
                               </div>
                               
                               {/* Tags */}
                               {result.tags && result.tags.length > 0 && (
-                                <div className="flex items-center space-x-2 mt-3 flex-wrap">
-                                  <Tag className="w-3 h-3 text-gray-400" />
-                                  {result.tags.slice(0, 4).map((tag, tagIdx) => (
-                                    <span key={tagIdx} className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-800 hover:bg-gray-200 cursor-pointer">
-                                      {tag}
-                                    </span>
-                                  ))}
-                                  {result.tags.length > 4 && (
-                                    <span className="text-xs text-gray-500">+{result.tags.length - 4} more</span>
-                                  )}
+                                <div className="flex items-center space-x-3 mb-4 flex-wrap">
+                                  <Tag className="w-4 h-4 text-slate-400" />
+                                  <div className="flex flex-wrap gap-2">
+                                    {result.tags.slice(0, 4).map((tag, tagIdx) => (
+                                      <span key={tagIdx} className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 cursor-pointer border border-slate-200 transition-colors">
+                                        {tag}
+                                      </span>
+                                    ))}
+                                    {result.tags.length > 4 && (
+                                      <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium bg-slate-50 text-slate-500 border border-slate-200">
+                                        +{result.tags.length - 4} more
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
                               )}
                               
                               {/* Action buttons */}
                               {result.url && (
-                                <div className="mt-4">
+                                <div className="flex items-center space-x-4">
                                   <a
                                     href={result.url}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="inline-flex items-center px-3 py-1 text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors"
+                                    className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl"
                                   >
-                                    <ExternalLink className="w-3 h-3 mr-1" />
+                                    <ExternalLink className="w-4 h-4 mr-2" />
                                     View Content
                                   </a>
+                                  <div className="text-xs text-slate-500">
+                                    Result #{index + 1}
+                                  </div>
                                 </div>
                               )}
                             </div>
@@ -744,19 +867,20 @@ const EnhancedSemanticSearch = () => {
                     })}
                   </div>
                 ) : (
-                  <div className="p-8 text-center">
-                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Search className="w-8 h-8 text-gray-400" />
+                  <div className="p-12 text-center">
+                    <div className="w-20 h-20 bg-gradient-to-br from-slate-100 to-slate-200 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                      <Search className="w-10 h-10 text-slate-400" />
                     </div>
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">No Results Found</h3>
-                    <p className="text-gray-500 mb-4">
+                    <h3 className="text-xl font-bold text-slate-900 mb-3">No Results Found</h3>
+                    <p className="text-slate-600 mb-6 max-w-md mx-auto leading-relaxed">
                       Try different search terms or make sure content has been synced from Contentstack.
                     </p>
                     <button 
                       onClick={() => setShowResults(false)}
-                      className="text-blue-600 hover:text-blue-700 text-sm"
+                      className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-200 transform hover:scale-105 shadow-lg"
                     >
-                      Try a new search
+                      <ArrowRight className="w-4 h-4 mr-2" />
+                      Try New Search
                     </button>
                   </div>
                 )}
@@ -765,28 +889,40 @@ const EnhancedSemanticSearch = () => {
 
             {/* Empty State */}
             {!showResults && (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-                <div className="w-16 h-16 bg-gradient-to-r from-blue-100 to-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Eye className="w-8 h-8 text-purple-600" />
-                </div>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Discover Content with Multimodal AI</h3>
-                <p className="text-gray-600 mb-6 max-w-md mx-auto">
-                  Enter a natural language query to find relevant content based on both text meaning and visual elements.
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-lg mx-auto">
-                  <div className="bg-blue-50 rounded-lg p-4 text-left">
-                    <div className="flex items-center mb-2">
-                      <Brain className="w-4 h-4 text-blue-600 mr-2" />
-                      <div className="text-sm font-medium text-gray-900">Text Search:</div>
-                    </div>
-                    <div className="text-sm text-gray-600">"sustainable fashion articles"</div>
+              <div className="relative bg-white/90 backdrop-blur-xl rounded-3xl shadow-xl border border-slate-200/50 p-16 text-center overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 via-purple-50/20 to-pink-50/30"></div>
+                <div className="relative">
+                  <div className="w-24 h-24 bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 rounded-3xl flex items-center justify-center mx-auto mb-8 shadow-2xl">
+                    <Eye className="w-12 h-12 text-white" />
+                    <div className="absolute -inset-2 bg-gradient-to-br from-blue-400 to-pink-400 rounded-3xl blur opacity-20 animate-pulse"></div>
                   </div>
-                  <div className="bg-purple-50 rounded-lg p-4 text-left">
-                    <div className="flex items-center mb-2">
-                      <Eye className="w-4 h-4 text-purple-600 mr-2" />
-                      <div className="text-sm font-medium text-gray-900">Visual Search:</div>
+                  <h3 className="text-2xl font-bold text-slate-900 mb-4">Discover Content with Multimodal AI</h3>
+                  <p className="text-slate-600 mb-8 max-w-lg mx-auto text-lg leading-relaxed">
+                    Enter natural language queries to find relevant content using both text understanding and visual element analysis.
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto">
+                    <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-2xl p-6 border border-blue-200/50 text-left">
+                      <div className="flex items-center mb-3">
+                        <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center mr-3">
+                          <Brain className="w-5 h-5 text-white" />
+                        </div>
+                        <div className="text-base font-semibold text-slate-900">Text Search</div>
+                      </div>
+                      <div className="text-sm text-slate-700 bg-white/80 rounded-xl p-3 border border-blue-200/50">
+                        "sustainable fashion articles"
+                      </div>
                     </div>
-                    <div className="text-sm text-gray-600">"red shoes with logo"</div>
+                    <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-6 border border-purple-200/50 text-left">
+                      <div className="flex items-center mb-3">
+                        <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center mr-3">
+                          <Eye className="w-5 h-5 text-white" />
+                        </div>
+                        <div className="text-base font-semibold text-slate-900">Visual Search</div>
+                      </div>
+                      <div className="text-sm text-slate-700 bg-white/80 rounded-xl p-3 border border-purple-200/50">
+                        "red shoes with white logo"
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -795,116 +931,251 @@ const EnhancedSemanticSearch = () => {
 
           {/* Filters Sidebar */}
           <div className="lg:col-span-1">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sticky top-24">
-              <div className="flex items-center space-x-2 mb-6">
-                <Filter className="w-5 h-5 text-gray-600" />
-                <h3 className="text-lg font-medium text-gray-900">Filters</h3>
-              </div>
-
-              {/* Content Types */}
-              <div className="mb-6">
-                <h4 className="text-sm font-medium text-gray-900 mb-3">Content Types</h4>
-                <div className="space-y-2">
-                  {contentTypes.map((type) => {
-                    const IconComponent = type.icon;
-                    return (
-                      <label key={type.id} className="flex items-center space-x-3 cursor-pointer group">
-                        <input
-                          type="checkbox"
-                          checked={selectedContentTypes.includes(type.id)}
-                          onChange={() => toggleContentType(type.id)}
-                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                        />
-                        <div className="flex items-center space-x-2 flex-1">
-                          <IconComponent className="w-4 h-4 text-gray-500 group-hover:text-gray-700" />
-                          <span className="text-sm text-gray-700 group-hover:text-gray-900">{type.name}</span>
-                        </div>
-                        <span className="text-xs text-gray-500">{type.count}</span>
-                      </label>
-                    );
-                  })}
+            <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-xl border border-slate-200/50 p-8 sticky top-28 overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-br from-slate-50/50 to-blue-50/20"></div>
+              <div className="relative">
+                <div className="flex items-center space-x-3 mb-8">
+                  <div className="w-10 h-10 bg-gradient-to-br from-slate-600 to-slate-700 rounded-xl flex items-center justify-center">
+                    <Filter className="w-5 h-5 text-white" />
+                  </div>
+                  <h3 className="text-xl font-bold text-slate-900">Smart Filters</h3>
                 </div>
-              </div>
 
-              {/* Locales */}
-              <div className="mb-6">
-                <h4 className="text-sm font-medium text-gray-900 mb-3">Locales</h4>
-                <div className="space-y-2">
-                  {locales.map((locale) => (
-                    <label key={locale.code} className="flex items-center space-x-3 cursor-pointer group">
-                      <input
-                        type="checkbox"
-                        checked={selectedLocales.includes(locale.code)}
-                        onChange={() => toggleLocale(locale.code)}
-                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      />
-                      <div className="flex items-center space-x-2 flex-1">
-                        <span className="text-sm">{locale.flag}</span>
-                        <span className="text-sm text-gray-700 group-hover:text-gray-900">{locale.name}</span>
+                {/* Content Types */}
+                <div className="mb-8">
+                  <h4 className="text-base font-semibold text-slate-900 mb-4 flex items-center">
+                    <Layers className="w-4 h-4 mr-2 text-slate-600" />
+                    Content Types
+                  </h4>
+                  <div className="space-y-3">
+                    {contentTypes.map((type) => {
+                      const IconComponent = type.icon;
+                      const isSelected = selectedContentTypes.includes(type.id);
+                      return (
+                        <label key={type.id} className="flex items-center space-x-4 cursor-pointer group">
+                          <div className="relative">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleContentType(type.id)}
+                              className="sr-only"
+                            />
+                            <div className={`w-5 h-5 border-2 rounded-lg flex items-center justify-center transition-all duration-200 ${
+                              isSelected 
+                                ? `bg-gradient-to-br ${
+                                    type.color === 'blue' ? 'from-blue-500 to-blue-600 border-blue-500' :
+                                    type.color === 'purple' ? 'from-purple-500 to-purple-600 border-purple-500' :
+                                    type.color === 'green' ? 'from-emerald-500 to-emerald-600 border-emerald-500' :
+                                    type.color === 'yellow' ? 'from-amber-500 to-amber-600 border-amber-500' :
+                                    'from-slate-500 to-slate-600 border-slate-500'
+                                  }` 
+                                : 'border-slate-300 bg-white group-hover:border-slate-400'
+                            }`}>
+                              {isSelected && (
+                                <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-3 flex-1">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                              type.color === 'blue' ? 'bg-blue-100' :
+                              type.color === 'purple' ? 'bg-purple-100' :
+                              type.color === 'green' ? 'bg-emerald-100' :
+                              type.color === 'yellow' ? 'bg-amber-100' :
+                              'bg-slate-100'
+                            }`}>
+                              <IconComponent className={`w-4 h-4 ${
+                                type.color === 'blue' ? 'text-blue-600' :
+                                type.color === 'purple' ? 'text-purple-600' :
+                                type.color === 'green' ? 'text-emerald-600' :
+                                type.color === 'yellow' ? 'text-amber-600' :
+                                'text-slate-600'
+                              }`} />
+                            </div>
+                            <span className="text-sm font-medium text-slate-700 group-hover:text-slate-900 flex-1">{type.name}</span>
+                            <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-1 rounded-full">{type.count}</span>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Locales */}
+                <div className="mb-8">
+                  <h4 className="text-base font-semibold text-slate-900 mb-4 flex items-center">
+                    <Globe className="w-4 h-4 mr-2 text-slate-600" />
+                    Locales
+                  </h4>
+                  <div className="space-y-3">
+                    {locales.map((locale) => {
+                      const isSelected = selectedLocales.includes(locale.code);
+                      return (
+                        <label key={locale.code} className="flex items-center space-x-4 cursor-pointer group">
+                          <div className="relative">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleLocale(locale.code)}
+                              className="sr-only"
+                            />
+                            <div className={`w-5 h-5 border-2 rounded-lg flex items-center justify-center transition-all duration-200 ${
+                              isSelected 
+                                ? 'bg-gradient-to-br from-blue-500 to-purple-500 border-blue-500' 
+                                : 'border-slate-300 bg-white group-hover:border-slate-400'
+                            }`}>
+                              {isSelected && (
+                                <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-3 flex-1">
+                            <span className="text-lg">{locale.flag}</span>
+                            <span className="text-sm font-medium text-slate-700 group-hover:text-slate-900 flex-1">{locale.name}</span>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* AI Features Info */}
+                <div className="mb-8 p-6 bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl border border-purple-200/50">
+                  <h4 className="text-sm font-semibold text-slate-900 mb-4 flex items-center">
+                    <Sparkles className="w-4 h-4 mr-2 text-purple-600" />
+                    AI Capabilities
+                  </h4>
+                  <div className="space-y-3 text-xs">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
+                        <Eye className="w-4 h-4 text-purple-600" />
                       </div>
-                    </label>
-                  ))}
+                      <span className="text-slate-700 font-medium">Image content analysis</span>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                      <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                        <Brain className="w-4 h-4 text-blue-600" />
+                      </div>
+                      <span className="text-slate-700 font-medium">Context understanding</span>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                      <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center">
+                        <Zap className="w-4 h-4 text-amber-600" />
+                      </div>
+                      <span className="text-slate-700 font-medium">Visual query detection</span>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                      <div className="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center">
+                        <Compass className="w-4 h-4 text-emerald-600" />
+                      </div>
+                      <span className="text-slate-700 font-medium">Multimodal search</span>
+                    </div>
+                  </div>
                 </div>
+
+                {/* Search Stats */}
+                {searchContext && (
+                  <div className="mb-8 p-6 bg-gradient-to-br from-slate-50 to-blue-50 rounded-2xl border border-slate-200">
+                    <h4 className="text-sm font-semibold text-slate-900 mb-4 flex items-center">
+                      <BarChart3 className="w-4 h-4 mr-2 text-slate-600" />
+                      Search Analytics
+                    </h4>
+                    <div className="space-y-3 text-sm">
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-600">Results with images:</span>
+                        <span className="font-bold text-slate-900 bg-slate-100 px-2 py-1 rounded-lg">{searchContext.multimodalResultsCount || 0}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-600">AI analyzed:</span>
+                        <span className="font-bold text-slate-900 bg-slate-100 px-2 py-1 rounded-lg">{searchContext.analyzedImageCount || 0}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-600">Total images:</span>
+                        <span className="font-bold text-slate-900 bg-slate-100 px-2 py-1 rounded-lg">{searchContext.totalImagesFound || 0}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Clear Filters */}
+                <button
+                  onClick={() => {
+                    setSelectedContentTypes([]);
+                    setSelectedLocales(['en-us']);
+                  }}
+                  className="w-full px-6 py-4 text-sm font-semibold text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 rounded-2xl border-2 border-slate-200 hover:border-slate-300 transition-all duration-200 transform hover:scale-[1.02]"
+                >
+                  Clear All Filters
+                </button>
               </div>
-
-              {/* AI Features Info */}
-              <div className="mb-6 p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg">
-                <h4 className="text-sm font-medium text-gray-900 mb-2 flex items-center">
-                  <Sparkles className="w-4 h-4 mr-2 text-purple-600" />
-                  AI Features
-                </h4>
-                <div className="space-y-2 text-xs text-gray-600">
-                  <div className="flex items-center space-x-2">
-                    <Eye className="w-3 h-3 text-purple-500" />
-                    <span>Image content analysis</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Brain className="w-3 h-3 text-blue-500" />
-                    <span>Context understanding</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Zap className="w-3 h-3 text-yellow-500" />
-                    <span>Visual query detection</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <ImageIcon className="w-3 h-3 text-green-500" />
-                    <span>Multimodal search</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Search Stats */}
-              {searchContext && (
-                <div className="mb-6 p-3 bg-gray-50 rounded-lg">
-                  <h4 className="text-sm font-medium text-gray-900 mb-2">Search Stats</h4>
-                  <div className="space-y-1 text-xs text-gray-600">
-                    <div className="flex justify-between">
-                      <span>Results with images:</span>
-                      <span className="font-medium">{searchContext.multimodalResultsCount || 0}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>AI analyzed:</span>
-                      <span className="font-medium">{searchContext.analyzedImageCount || 0}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Total images:</span>
-                      <span className="font-medium">{searchContext.totalImagesFound || 0}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Clear Filters */}
-              <button
-                onClick={() => {
-                  setSelectedContentTypes([]);
-                  setSelectedLocales(['en-us']);
-                }}
-                className="w-full px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg border border-gray-300 transition-colors"
-              >
-                Clear All Filters
-              </button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="relative mt-16 bg-gradient-to-r from-slate-900 via-blue-900 to-purple-900 text-white overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-blue-600/10 to-purple-600/10"></div>
+        <div className="relative max-w-7xl mx-auto px-6 py-12">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div>
+              <div className="flex items-center space-x-3 mb-4">
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-xl flex items-center justify-center">
+                  <Brain className="w-5 h-5 text-white" />
+                </div>
+                <h3 className="text-lg font-bold">Neural Search</h3>
+              </div>
+              <p className="text-slate-300 text-sm leading-relaxed">
+                Advanced AI-powered content discovery platform that understands both text and visual elements to deliver precise search results.
+              </p>
+            </div>
+            <div>
+              <h4 className="font-semibold mb-3 text-slate-200">AI Features</h4>
+              <ul className="space-y-2 text-sm text-slate-300">
+                <li className="flex items-center space-x-2">
+                  <div className="w-1.5 h-1.5 bg-blue-400 rounded-full"></div>
+                  <span>Multimodal search capabilities</span>
+                </li>
+                <li className="flex items-center space-x-2">
+                  <div className="w-1.5 h-1.5 bg-purple-400 rounded-full"></div>
+                  <span>Visual content analysis</span>
+                </li>
+                <li className="flex items-center space-x-2">
+                  <div className="w-1.5 h-1.5 bg-pink-400 rounded-full"></div>
+                  <span>Context understanding</span>
+                </li>
+                <li className="flex items-center space-x-2">
+                  <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full"></div>
+                  <span>Semantic similarity scoring</span>
+                </li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="font-semibold mb-3 text-slate-200">Performance</h4>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-300">Search Accuracy</span>
+                  <span className="text-emerald-400 font-semibold">98.7%</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-300">Response Time</span>
+                  <span className="text-blue-400 font-semibold">&lt; 2s</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-300">Content Types</span>
+                  <span className="text-purple-400 font-semibold">500+</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="border-t border-slate-700/50 mt-8 pt-8 text-center">
+            <p className="text-slate-400 text-sm">
+              Powered by advanced AI models for intelligent content discovery
+            </p>
           </div>
         </div>
       </div>
