@@ -835,7 +835,9 @@ app.get('/debug-vectors', async (req, res) => {
 // WEBHOOK ENDPOINTS - NEW INTEGRATION
 // ===========================================
 
+
 // Webhook handler for Contentstack content changes
+
 app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
   try {
     console.log('🔔 Received Contentstack webhook:', JSON.stringify(req.body, null, 2));
@@ -856,63 +858,81 @@ app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
       contentType = entryData.content_type_uid;
       entryUid = entryData.uid;
       locale = entryData.locale || 'en-us';
+    } else if (module === 'asset' && data.asset) {
+      // Asset webhook - log and acknowledge but don't process
+      console.log(`📷 Asset event: ${event} for asset ${data.asset.uid}`);
+      return res.status(200).json({ 
+        success: true, 
+        message: 'Asset webhook received but not processed',
+        event,
+        assetUid: data.asset.uid
+      });
     } else if (data.uid && data.content_type_uid) {
       // Direct entry data
       entryData = data;
       contentType = data.content_type_uid;
       entryUid = data.uid;
       locale = data.locale || 'en-us';
+    } else if (data.uid && !data.content_type_uid) {
+      // Could be asset data without content_type_uid
+      console.log(`📷 Possible asset event: ${event} for ${data.uid}`);
+      return res.status(200).json({ 
+        success: true, 
+        message: 'Asset-like webhook received but not processed',
+        event,
+        uid: data.uid
+      });
     } else {
-      console.log('❌ Unsupported webhook payload structure');
-      return res.status(400).json({ error: 'Unsupported payload structure' });
+      console.log('❌ Unsupported webhook payload structure:', { event, dataKeys: Object.keys(data), module });
+      return res.status(400).json({ 
+        error: 'Unsupported payload structure',
+        received: { event, module, dataKeys: Object.keys(data) }
+      });
     }
 
     console.log(`📝 Processing webhook: ${event} for ${contentType}:${entryUid} (${locale})`);
 
     const index = pinecone.Index(process.env.PINECONE_INDEX);
 
-  switch (event) {
-  case 'entry.publish':
-  case 'publish':
-    await handleEntryPublish(entryData, contentType, locale, index);
-    break;
-    
-  case 'entry.update':
-  case 'update':
-    await handleEntryUpdate(entryData, contentType, locale, index);
-    break;
-    
-  case 'entry.unpublish':
-  case 'unpublish':
-    await handleEntryUnpublish(entryUid, contentType, locale, index);
-    break;
-    
-  case 'entry.delete':
-  case 'delete':
-    await handleEntryDelete(entryUid, contentType, locale, index);
-    break;
+    switch (event) {
+      case 'entry.publish':
+      case 'publish':
+        await handleEntryPublish(entryData, contentType, locale, index);
+        break;
+        
+      case 'entry.update':
+      case 'update':
+        await handleEntryUpdate(entryData, contentType, locale, index);
+        break;
+        
+      case 'entry.unpublish':
+      case 'unpublish':
+        await handleEntryUnpublish(entryUid, contentType, locale, index);
+        break;
+        
+      case 'entry.delete':
+      case 'delete':
+        await handleEntryDelete(entryUid, contentType, locale, index);
+        break;
 
-  // Add these new asset cases:
-  case 'asset.publish':
-  case 'asset.update':
-  case 'asset.unpublish':
-  case 'asset.delete':
-    console.log(`📷 Asset event received: ${event} for ${data.uid || 'unknown'}`);
-    // For assets, you might want to trigger re-indexing of related entries
-    // or handle asset-specific logic
-    break;
-    
-  default:
-    console.log(`⚠️ Unhandled webhook event: ${event}`);
-}
-
+      // Asset events - acknowledge but don't process
+      case 'asset.publish':
+      case 'asset.update':
+      case 'asset.unpublish':
+      case 'asset.delete':
+        console.log(`📷 Asset event handled: ${event}`);
+        break;
+        
+      default:
+        console.log(`⚠️ Unhandled webhook event: ${event}`);
+    }
 
     res.status(200).json({ 
       success: true, 
       message: 'Webhook processed successfully',
       event,
-      entryUid,
-      contentType,
+      entryUid: entryUid || 'asset',
+      contentType: contentType || 'asset',
       timestamp: new Date().toISOString()
     });
 
@@ -925,6 +945,9 @@ app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
     });
   }
 });
+
+
+
 
 // Webhook test endpoint
 app.get('/api/webhook/test', (req, res) => {
