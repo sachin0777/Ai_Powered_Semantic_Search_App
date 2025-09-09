@@ -74,8 +74,6 @@ const Stack = contentstack.Stack({
 const app = express();
 
 // Middleware - Updated CORS for Vercel
-
-
 app.use(cors({
   origin: [
     'http://localhost:5173', 
@@ -84,15 +82,11 @@ app.use(cors({
     'https://aipoweredsemanticsearchapp.eu-contentstackapps.com',
     'https://ai-powered-semantic-search-app-frontend-5v69zz3yt.vercel.app',
     'https://ai-powered-semantic-search-app-fron.vercel.app'
-
   ],
   credentials: true
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
-});
 
 // Helper functions for image extraction and analysis
 function extractImageUrls(entry) {
@@ -269,6 +263,214 @@ function processImageData(results) {
   };
 }
 
+// WEBHOOK AUTHENTICATION MIDDLEWARE
+const authenticateWebhook = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  
+  if (!authHeader || !authHeader.startsWith('Basic ')) {
+    console.log('❌ Webhook authentication failed: No basic auth header');
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  try {
+    const credentials = Buffer.from(authHeader.split(' ')[1], 'base64').toString('utf-8');
+    const [username, password] = credentials.split(':');
+
+    // Use the same credentials you set in Contentstack webhook configuration
+    const expectedUsername = process.env.WEBHOOK_USERNAME || 'contentstack_webhook';
+    const expectedPassword = process.env.WEBHOOK_PASSWORD || 'your-secure-password';
+
+    if (username !== expectedUsername || password !== expectedPassword) {
+      console.log('❌ Webhook authentication failed: Invalid credentials');
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    console.log('✅ Webhook authentication successful');
+    next();
+  } catch (error) {
+    console.log('❌ Webhook authentication error:', error.message);
+    return res.status(401).json({ error: 'Authentication failed' });
+  }
+};
+
+// HELPER FUNCTIONS FOR CONTENT EXTRACTION
+function extractContentFromEntry(entryData, contentType) {
+  let content = '';
+  
+  // Extract title
+  if (entryData.title) {
+    content += entryData.title + ' ';
+  }
+  
+  // Extract description/summary
+  if (entryData.description) {
+    content += entryData.description + ' ';
+  }
+  if (entryData.summary) {
+    content += entryData.summary + ' ';
+  }
+  
+  // Extract rich text content
+  if (entryData.content) {
+    if (typeof entryData.content === 'string') {
+      content += entryData.content + ' ';
+    } else if (entryData.content.children) {
+      // Handle rich text editor content
+      content += extractRichTextContent(entryData.content) + ' ';
+    }
+  }
+  
+  // Extract body content
+  if (entryData.body) {
+    if (typeof entryData.body === 'string') {
+      content += entryData.body + ' ';
+    } else if (entryData.body.children) {
+      content += extractRichTextContent(entryData.body) + ' ';
+    }
+  }
+  
+  // Extract tags
+  if (entryData.tags && Array.isArray(entryData.tags)) {
+    content += entryData.tags.join(' ') + ' ';
+  }
+  
+  // Extract category
+  if (entryData.category) {
+    content += entryData.category + ' ';
+  }
+  
+  return content.trim();
+}
+
+function extractRichTextContent(richTextObj) {
+  if (!richTextObj || !richTextObj.children) return '';
+  
+  let text = '';
+  
+  function traverse(node) {
+    if (node.text) {
+      text += node.text + ' ';
+    }
+    if (node.children && Array.isArray(node.children)) {
+      node.children.forEach(traverse);
+    }
+  }
+  
+  richTextObj.children.forEach(traverse);
+  return text.trim();
+}
+
+// WEBHOOK HANDLER FUNCTIONS
+async function handleEntryPublish(entryData, contentType, locale, index) {
+  console.log(`📤 Publishing entry: ${entryData.uid}`);
+  await reindexEntry(entryData, contentType, locale, index);
+}
+
+async function handleEntryUpdate(entryData, contentType, locale, index) {
+  console.log(`📝 Updating entry: ${entryData.uid}`);
+  await reindexEntry(entryData, contentType, locale, index);
+}
+
+async function handleEntryUnpublish(entryUid, contentType, locale, index) {
+  console.log(`📥 Unpublishing entry: ${entryUid}`);
+  await removeFromIndex(entryUid, contentType, locale, index);
+}
+
+async function handleEntryDelete(entryUid, contentType, locale, index) {
+  console.log(`🗑️ Deleting entry: ${entryUid}`);
+  await removeFromIndex(entryUid, contentType, locale, index);
+}
+
+// Enhanced reindex function
+async function reindexEntry(entryData, contentType, locale, index) {
+  try {
+    // Extract content for embedding
+    const content = extractContentFromEntry(entryData, contentType);
+    
+    if (!content || content.trim().length === 0) {
+      console.log(`⚠️ No content to index for entry ${entryData.uid}`);
+      return;
+    }
+
+    console.log(`🤖 Generating embedding for: ${entryData.title || entryData.uid}`);
+
+    // Generate embedding using Cohere
+    const embedResponse = await cohere.embed({
+      model: "embed-english-light-v3.0",
+      texts: [content.trim()],
+      inputType: "search_document"
+    });
+
+    let embedding;
+    if (embedResponse?.embeddings?.[0]) {
+      embedding = embedResponse.embeddings[0];
+    } else if (embedResponse?.body?.embeddings?.[0]) {
+      embedding = embedResponse.body.embeddings[0];
+    } else {
+      throw new Error("Failed to get embeddings from Cohere");
+    }
+
+    // Extract images
+    const images = extractImageUrls(entryData);
+    
+    // Prepare metadata
+    const metadata = {
+      id: entryData.uid,
+      type: contentType,
+      content_type_uid: contentType,
+      title: entryData.title || entryData.name || 'Untitled',
+      snippet: content.substring(0, 300) + (content.length > 300 ? '...' : ''),
+      locale: locale,
+      date: entryData.updated_at || entryData.created_at || new Date().toISOString(),
+      updated_at: entryData.updated_at || new Date().toISOString(),
+      url: entryData.url || `#${entryData.uid}`,
+      tags: Array.isArray(entryData.tags) ? entryData.tags : 
+            (typeof entryData.tags === 'string' ? entryData.tags.split(',').map(t => t.trim()) : []),
+      category: entryData.category || contentType
+    };
+
+    // Add image metadata if images exist
+    if (images.length > 0) {
+      metadata.primary_image = images[0];
+      metadata.all_images = images;
+      metadata.image_count = images.length;
+      metadata.has_images = true;
+    }
+
+    // Add additional fields that might be useful for search
+    if (entryData.price) metadata.price = entryData.price;
+    if (entryData.duration) metadata.duration = entryData.duration;
+    if (entryData.author) metadata.author = entryData.author;
+
+    // Update in Pinecone
+    const vectorId = `${entryData.uid}_${locale}`;
+    await index.upsert([{
+      id: vectorId,
+      values: embedding,
+      metadata: metadata
+    }]);
+
+    console.log(`✅ Successfully reindexed entry: ${entryData.uid} (${vectorId})`);
+  } catch (error) {
+    console.error(`❌ Failed to reindex entry ${entryData.uid}:`, error);
+    throw error;
+  }
+}
+
+// Helper function to remove entry from index
+async function removeFromIndex(entryUid, contentType, locale, index) {
+  try {
+    // Remove specific locale version
+    const vectorId = `${entryUid}_${locale}`;
+    await index.deleteOne(vectorId);
+    
+    console.log(`✅ Successfully removed entry from index: ${vectorId}`);
+  } catch (error) {
+    console.error(`❌ Failed to remove entry ${entryUid} from index:`, error);
+    throw error;
+  }
+}
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ 
@@ -278,7 +480,8 @@ app.get('/health', (req, res) => {
     features: {
       semantic_search: true,
       image_analysis: !!openai,
-      multimodal_search: true
+      multimodal_search: true,
+      webhook_integration: true
     }
   });
 });
@@ -628,6 +831,207 @@ app.get('/debug-vectors', async (req, res) => {
   }
 });
 
+// ===========================================
+// WEBHOOK ENDPOINTS - NEW INTEGRATION
+// ===========================================
+
+// Webhook handler for Contentstack content changes
+app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
+  try {
+    console.log('🔔 Received Contentstack webhook:', JSON.stringify(req.body, null, 2));
+    
+    const { event, data, module } = req.body;
+    
+    if (!event || !data) {
+      console.log('❌ Invalid webhook payload - missing event or data');
+      return res.status(400).json({ error: 'Invalid webhook payload' });
+    }
+
+    // Handle different webhook payload structures
+    let entryData, contentType, entryUid, locale;
+
+    if (module === 'entry' && data.entry) {
+      // Standard entry webhook
+      entryData = data.entry;
+      contentType = entryData.content_type_uid;
+      entryUid = entryData.uid;
+      locale = entryData.locale || 'en-us';
+    } else if (data.uid && data.content_type_uid) {
+      // Direct entry data
+      entryData = data;
+      contentType = data.content_type_uid;
+      entryUid = data.uid;
+      locale = data.locale || 'en-us';
+    } else {
+      console.log('❌ Unsupported webhook payload structure');
+      return res.status(400).json({ error: 'Unsupported payload structure' });
+    }
+
+    console.log(`📝 Processing webhook: ${event} for ${contentType}:${entryUid} (${locale})`);
+
+    const index = pinecone.Index(process.env.PINECONE_INDEX);
+
+    switch (event) {
+      case 'entry.publish':
+        await handleEntryPublish(entryData, contentType, locale, index);
+        break;
+        
+      case 'entry.update':
+        await handleEntryUpdate(entryData, contentType, locale, index);
+        break;
+        
+      case 'entry.unpublish':
+        await handleEntryUnpublish(entryUid, contentType, locale, index);
+        break;
+        
+      case 'entry.delete':
+        await handleEntryDelete(entryUid, contentType, locale, index);
+        break;
+        
+      default:
+        console.log(`⚠️ Unhandled webhook event: ${event}`);
+    }
+
+    res.status(200).json({ 
+      success: true, 
+      message: 'Webhook processed successfully',
+      event,
+      entryUid,
+      contentType,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ Webhook processing error:', error);
+    res.status(500).json({ 
+      error: 'Webhook processing failed', 
+      details: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Webhook test endpoint
+app.get('/api/webhook/test', (req, res) => {
+  res.json({
+    status: 'Webhook endpoint is active',
+    timestamp: new Date().toISOString(),
+    authentication: 'Basic Auth required',
+    supportedEvents: [
+      'entry.publish',
+      'entry.update', 
+      'entry.unpublish',
+      'entry.delete'
+    ]
+  });
+});
+
+// Manual reindex endpoint for specific entries
+app.post('/api/reindex/:contentType/:entryUid', authenticateWebhook, async (req, res) => {
+  try {
+    const { contentType, entryUid } = req.params;
+    const { locale = 'en-us' } = req.body;
+
+    console.log(`🔄 Manual reindex requested for ${contentType}:${entryUid}`);
+
+    // Fetch entry from Contentstack
+    const entry = await Stack.ContentType(contentType).Entry(entryUid).toJSON().fetch();
+    
+    if (!entry) {
+      return res.status(404).json({
+        error: 'Entry not found',
+        contentType,
+        entryUid
+      });
+    }
+
+    const index = pinecone.Index(process.env.PINECONE_INDEX);
+    await reindexEntry(entry, contentType, locale, index);
+
+    res.json({
+      success: true,
+      message: 'Entry reindexed successfully',
+      entryUid,
+      contentType,
+      locale,
+      title: entry.title || 'Untitled'
+    });
+
+  } catch (error) {
+    console.error('❌ Manual reindex error:', error);
+    res.status(500).json({
+      error: 'Manual reindex failed',
+      details: error.message
+    });
+  }
+});
+
+// Bulk reindex endpoint for content type
+app.post('/api/reindex-content-type/:contentType', authenticateWebhook, async (req, res) => {
+  try {
+    const { contentType } = req.params;
+    const { locale = 'en-us', limit = 100 } = req.body;
+
+    console.log(`🔄 Bulk reindex requested for content type: ${contentType}`);
+
+    // Fetch entries from Contentstack
+    const query = Stack.ContentType(contentType).Query().limit(limit);
+    const result = await query.toJSON().find();
+    
+    let entries = [];
+    if (result && Array.isArray(result)) {
+      entries = Array.isArray(result[0]) ? result[0] : result;
+    } else if (result && result.entries) {
+      entries = result.entries;
+    }
+
+    if (entries.length === 0) {
+      return res.status(404).json({
+        error: 'No entries found',
+        contentType
+      });
+    }
+
+    const index = pinecone.Index(process.env.PINECONE_INDEX);
+    let successCount = 0;
+    let errorCount = 0;
+    const errors = [];
+
+    for (const entry of entries) {
+      try {
+        await reindexEntry(entry, contentType, locale, index);
+        successCount++;
+        console.log(`✅ Reindexed: ${entry.uid}`);
+      } catch (error) {
+        errorCount++;
+        errors.push({
+          uid: entry.uid,
+          error: error.message
+        });
+        console.error(`❌ Failed to reindex ${entry.uid}:`, error.message);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Bulk reindex completed',
+      contentType,
+      locale,
+      totalEntries: entries.length,
+      successCount,
+      errorCount,
+      errors: errors.slice(0, 10) // Limit error details
+    });
+
+  } catch (error) {
+    console.error('❌ Bulk reindex error:', error);
+    res.status(500).json({
+      error: 'Bulk reindex failed',
+      details: error.message
+    });
+  }
+});
+
 // Error handling middleware
 app.use((error, req, res, next) => {
   console.error('🚨 Unhandled error:', error);
@@ -649,161 +1053,6 @@ app.use((req, res) => {
 // Export the app for Vercel
 export default app;
 
-
-// Add this to your backend/server.js or create as separate file and import
-
-// Webhook handler for Contentstack content changes
-app.post('/api/webhook/contentstack', async (req, res) => {
-  try {
-    console.log('Received Contentstack webhook:', req.body);
-    
-    const { event, data } = req.body;
-    
-    if (!event || !data) {
-      return res.status(400).json({ error: 'Invalid webhook payload' });
-    }
-
-    const entryData = data.entry || data;
-    const contentType = entryData.content_type_uid || entryData.content_type;
-    const entryUid = entryData.uid;
-    const locale = entryData.locale || 'en-us';
-
-    console.log(`Webhook event: ${event} for content type: ${contentType}, entry: ${entryUid}`);
-
-    switch (event) {
-      case 'entry.publish':
-      case 'entry.update':
-        // Re-index the updated entry
-        await reindexEntry(entryData, contentType, locale);
-        break;
-        
-      case 'entry.unpublish':
-      case 'entry.delete':
-        // Remove from index
-        await removeFromIndex(entryUid, contentType);
-        break;
-        
-      default:
-        console.log(`Unhandled webhook event: ${event}`);
-    }
-
-    res.status(200).json({ success: true, message: 'Webhook processed successfully' });
-  } catch (error) {
-    console.error('Webhook processing error:', error);
-    res.status(500).json({ error: 'Webhook processing failed', details: error.message });
-  }
-});
-
-// Helper function to reindex a single entry
-async function reindexEntry(entryData, contentType, locale) {
-  try {
-    // Extract content for embedding
-    const content = extractContentFromEntry(entryData, contentType);
-    
-    if (!content || content.trim().length === 0) {
-      console.log(`No content to index for entry ${entryData.uid}`);
-      return;
-    }
-
-    // Generate embedding
-    const embedding = await generateEmbedding(content);
-    
-    // Prepare metadata
-    const metadata = {
-      id: entryData.uid,
-      contentType: contentType,
-      title: entryData.title || entryData.name || 'Untitled',
-      locale: locale,
-      lastModified: new Date().toISOString(),
-      snippet: content.substring(0, 300),
-      url: entryData.url || `#${entryData.uid}`,
-      // Add any other relevant metadata
-      tags: entryData.tags || [],
-      category: entryData.category || contentType
-    };
-
-    // Handle images if present
-    if (entryData.images || entryData.image || entryData.featured_image) {
-      const images = extractImages(entryData);
-      if (images.length > 0) {
-        metadata.primaryImage = images[0];
-        metadata.allImages = images;
-        metadata.imageCount = images.length;
-        metadata.hasImages = true;
-      }
-    }
-
-    // Update in Pinecone
-    const vectorId = `${entryData.uid}_${locale}`;
-    await index.upsert([{
-      id: vectorId,
-      values: embedding,
-      metadata: metadata
-    }]);
-
-    console.log(`Successfully reindexed entry: ${entryData.uid}`);
-  } catch (error) {
-    console.error(`Failed to reindex entry ${entryData.uid}:`, error);
-    throw error;
-  }
-}
-
-// Helper function to remove entry from index
-async function removeFromIndex(entryUid, contentType) {
-  try {
-    // Remove all locales of this entry
-    const vectorIds = [`${entryUid}_en-us`, `${entryUid}_es-es`, `${entryUid}_fr-fr`, `${entryUid}_de-de`];
-    
-    await index.deleteMany(vectorIds);
-    console.log(`Successfully removed entry from index: ${entryUid}`);
-  } catch (error) {
-    console.error(`Failed to remove entry ${entryUid} from index:`, error);
-    throw error;
-  }
-}
-
-// Helper function to extract images from entry
-function extractImages(entry) {
-  const images = [];
-  
-  // Check various possible image fields
-  const imageFields = ['images', 'image', 'featured_image', 'banner_image', 'gallery'];
-  
-  imageFields.forEach(field => {
-    if (entry[field]) {
-      if (Array.isArray(entry[field])) {
-        entry[field].forEach(img => {
-          if (img.url) images.push(img.url);
-          if (img.href) images.push(img.href);
-        });
-      } else if (typeof entry[field] === 'object' && entry[field].url) {
-        images.push(entry[field].url);
-      } else if (typeof entry[field] === 'string') {
-        images.push(entry[field]);
-      }
-    }
-  });
-
-  return images.filter(url => url && url.trim().length > 0);
-}
-
-// Add webhook verification middleware (optional but recommended)
-app.use('/api/webhook/contentstack', (req, res, next) => {
-  // Verify webhook signature if Contentstack provides one
-  // This is optional but recommended for security
-  const signature = req.headers['x-contentstack-signature'];
-  
-  if (signature) {
-    // Implement signature verification here
-    // const expectedSignature = generateSignature(req.body, webhookSecret);
-    // if (signature !== expectedSignature) {
-    //   return res.status(401).json({ error: 'Invalid webhook signature' });
-    // }
-  }
-  
-  next();
-});
-
 // Only listen on port in development/local
 if (process.env.NODE_ENV !== 'production') {
   const PORT = process.env.PORT || 5000;
@@ -815,11 +1064,15 @@ if (process.env.NODE_ENV !== 'production') {
     console.log(`🧪 Test data endpoint: http://localhost:${PORT}/test-data`);
     console.log(`🐛 Debug vectors endpoint: http://localhost:${PORT}/debug-vectors`);
     console.log(`🔧 Debug Contentstack endpoint: http://localhost:${PORT}/debug-contentstack/:contentType`);
+    console.log(`🔗 Webhook endpoint: http://localhost:${PORT}/api/webhook/contentstack`);
+    console.log(`🔄 Manual reindex endpoint: http://localhost:${PORT}/api/reindex/:contentType/:entryUid`);
     console.log(`🌍 Contentstack region: ${process.env.CONTENTSTACK_REGION || 'US'}`);
     console.log(`🤖 Features enabled:`);
     console.log(`   - Semantic search: ✅`);
     console.log(`   - Image analysis: ${openai ? '✅ (with gpt-4o-mini)' : '❌ (OpenAI API key not configured)'}`);
     console.log(`   - Multimodal search: ✅`);
     console.log(`   - Debug endpoints: ✅`);
+    console.log(`   - Webhook integration: ✅`);
+    console.log(`   - Real-time sync: ✅`);
   });
 }
