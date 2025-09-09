@@ -114,8 +114,14 @@ function isImageUrl(url) {
          urlLower.includes('image');
 }
 
-// New function to map content types to display names
+// FIXED: New function to map content types to display names with proper null handling
 function mapContentTypeToDisplay(contentTypeUid) {
+  // Handle null/undefined/empty contentTypeUid
+  if (!contentTypeUid || typeof contentTypeUid !== 'string') {
+    console.warn('Invalid contentTypeUid provided to mapContentTypeToDisplay:', contentTypeUid);
+    return 'article'; // Safe default
+  }
+
   const mappings = {
     'article': 'article',
     'blog_post': 'article',
@@ -138,8 +144,9 @@ function mapContentTypeToDisplay(contentTypeUid) {
   };
   
   // Try exact match first
-  if (mappings[contentTypeUid]) {
-    return mappings[contentTypeUid];
+  const exactMatch = mappings[contentTypeUid.toLowerCase()];
+  if (exactMatch) {
+    return exactMatch;
   }
   
   // Try partial matches
@@ -401,8 +408,14 @@ function processImageData(results) {
   };
 }
 
-// WEBHOOK AUTHENTICATION MIDDLEWARE
+// WEBHOOK AUTHENTICATION MIDDLEWARE - FIXED
 const authenticateWebhook = (req, res, next) => {
+  // Skip authentication for test endpoints or if no auth is configured
+  if (req.path.includes('/test') || !process.env.WEBHOOK_USERNAME) {
+    console.log('Skipping webhook authentication for test endpoint or no auth configured');
+    return next();
+  }
+
   const authHeader = req.headers.authorization;
   
   if (!authHeader || !authHeader.startsWith('Basic ')) {
@@ -498,30 +511,47 @@ function extractRichTextContent(richTextObj) {
   return text.trim();
 }
 
-// WEBHOOK HANDLER FUNCTIONS
+// WEBHOOK HANDLER FUNCTIONS - FIXED WITH PROPER ERROR HANDLING
 async function handleEntryPublish(entryData, contentType, locale, index) {
-  console.log(`Publishing entry: ${entryData.uid}`);
+  console.log(`Publishing entry: ${entryData.uid} (${contentType})`);
   await reindexEntry(entryData, contentType, locale, index);
 }
 
 async function handleEntryUpdate(entryData, contentType, locale, index) {
-  console.log(`Updating entry: ${entryData.uid}`);
+  console.log(`Updating entry: ${entryData.uid} (${contentType})`);
   await reindexEntry(entryData, contentType, locale, index);
 }
 
 async function handleEntryUnpublish(entryUid, contentType, locale, index) {
-  console.log(`Unpublishing entry: ${entryUid}`);
+  console.log(`Unpublishing entry: ${entryUid} (${contentType})`);
   await removeFromIndex(entryUid, contentType, locale, index);
 }
 
 async function handleEntryDelete(entryUid, contentType, locale, index) {
-  console.log(`Deleting entry: ${entryUid}`);
+  console.log(`Deleting entry: ${entryUid} (${contentType})`);
   await removeFromIndex(entryUid, contentType, locale, index);
 }
 
-// Enhanced reindex function with proper image analysis
+async function handleEntryCreate(entryData, contentType, locale, index) {
+  console.log(`Creating entry: ${entryData.uid} (${contentType})`);
+  await reindexEntry(entryData, contentType, locale, index);
+}
+
+// Enhanced reindex function with proper image analysis - FIXED ERROR HANDLING
 async function reindexEntry(entryData, contentType, locale, index) {
   try {
+    // FIXED: Ensure contentType is properly set
+    if (!contentType) {
+      if (entryData.content_type_uid) {
+        contentType = entryData.content_type_uid;
+      } else {
+        console.warn(`No content type found for entry ${entryData.uid}, using default`);
+        contentType = 'content';
+      }
+    }
+
+    console.log(`Reindexing entry: ${entryData.uid} of type: ${contentType}`);
+    
     // Extract content for embedding
     const content = extractContentFromEntry(entryData, contentType);
     
@@ -555,7 +585,7 @@ async function reindexEntry(entryData, contentType, locale, index) {
       console.log(`   Image URLs:`, images);
     }
     
-    // Prepare metadata with proper content type mapping
+    // FIXED: Prepare metadata with proper content type mapping and null checking
     const mappedType = mapContentTypeToDisplay(contentType);
     console.log(`Mapping content type ${contentType} to ${mappedType}`);
     
@@ -565,7 +595,7 @@ async function reindexEntry(entryData, contentType, locale, index) {
       content_type_uid: contentType,
       title: entryData.title || entryData.name || 'Untitled',
       snippet: content.substring(0, 300) + (content.length > 300 ? '...' : ''),
-      locale: locale,
+      locale: locale || 'en-us',
       date: entryData.updated_at || entryData.created_at || new Date().toISOString(),
       updated_at: entryData.updated_at || new Date().toISOString(),
       url: entryData.url || `#${entryData.uid}`,
@@ -612,7 +642,7 @@ async function reindexEntry(entryData, contentType, locale, index) {
     metadata.multimodal_content = images.length > 0 ? true : false;
 
     // Update in Pinecone
-    const vectorId = `${entryData.uid}_${locale}`;
+    const vectorId = `${entryData.uid}_${locale || 'en-us'}`;
     await index.upsert([{
       id: vectorId,
       values: embedding,
@@ -982,7 +1012,7 @@ app.get('/debug-vectors', async (req, res) => {
 // WEBHOOK ENDPOINTS - ENHANCED INTEGRATION
 // ===========================================
 
-// Webhook handler for Contentstack content changes
+// FIXED: Enhanced webhook handler for Contentstack content changes
 app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
   try {
     console.log('Received Contentstack webhook:', JSON.stringify(req.body, null, 2));
@@ -1005,33 +1035,50 @@ app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
       });
     }
 
-    // Handle different webhook payload structures for entries
+    // FIXED: Enhanced entry data extraction with multiple fallback strategies
     let entryData, contentType, entryUid, locale;
 
+    // Strategy 1: Standard entry webhook structure
     if (module === 'entry' && data.entry) {
-      // Standard entry webhook
       entryData = data.entry;
       contentType = entryData.content_type_uid;
       entryUid = entryData.uid;
       locale = entryData.locale || 'en-us';
-    } else if (data.uid && data.content_type_uid) {
-      // Direct entry data
+      console.log('Using strategy 1: Standard entry webhook structure');
+    } 
+    // Strategy 2: Direct entry data
+    else if (data.uid && data.content_type_uid) {
       entryData = data;
       contentType = data.content_type_uid;
       entryUid = data.uid;
       locale = data.locale || 'en-us';
-    } else {
-      console.log('Unsupported webhook payload structure:', { 
-        event, 
-        dataKeys: Object.keys(data), 
-        module,
-        hasContentTypeUid: !!data.content_type_uid,
-        hasUid: !!data.uid
-      });
+      console.log('Using strategy 2: Direct entry data');
+    }
+    // Strategy 3: Entry data nested in data object
+    else if (data.data && data.data.uid) {
+      entryData = data.data;
+      contentType = entryData.content_type_uid;
+      entryUid = entryData.uid;
+      locale = entryData.locale || 'en-us';
+      console.log('Using strategy 3: Nested entry data');
+    }
+    // Strategy 4: Try to extract from various webhook formats
+    else if (data.uid) {
+      console.log('Using strategy 4: Entry UID found, attempting to determine content type');
       
-      // Check if this might be an entry without content_type_uid
-      if (data.uid && !data.content_type_uid && !data.asset) {
-        console.log('Entry-like payload without content_type_uid, attempting to fetch from Contentstack...');
+      // Check if content_type_uid is elsewhere in the payload
+      contentType = data.content_type_uid || 
+                   req.headers['x-contentstack-content-type'] || 
+                   req.body.content_type_uid ||
+                   req.body.contentType;
+      
+      if (contentType) {
+        entryData = data;
+        entryUid = data.uid;
+        locale = data.locale || 'en-us';
+        console.log(`Found content type: ${contentType}`);
+      } else {
+        console.log('Content type not found in webhook payload, attempting to fetch from Contentstack...');
         
         try {
           // Try to determine content type by fetching the entry
@@ -1062,39 +1109,77 @@ app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
             console.log(`Could not find entry ${data.uid} in any content type`);
             return res.status(404).json({ 
               error: 'Entry not found in any content type',
-              uid: data.uid
+              uid: data.uid,
+              availableStrategies: ['Standard entry webhook', 'Direct entry data', 'Nested entry data', 'UID with content type lookup']
             });
           }
         } catch (fetchError) {
           console.error('Failed to fetch entry details:', fetchError.message);
           return res.status(500).json({
             error: 'Failed to determine content type',
-            details: fetchError.message
+            details: fetchError.message,
+            uid: data.uid
           });
         }
-      } else {
-        return res.status(400).json({ 
-          error: 'Unsupported payload structure',
-          received: { event, module, dataKeys: Object.keys(data) }
-        });
       }
+    } else {
+      console.log('Unsupported webhook payload structure:', { 
+        event, 
+        dataKeys: Object.keys(data), 
+        module,
+        hasContentTypeUid: !!data.content_type_uid,
+        hasUid: !!data.uid,
+        hasNestedData: !!(data.data && typeof data.data === 'object'),
+        headers: Object.keys(req.headers).filter(h => h.includes('contentstack'))
+      });
+      
+      return res.status(400).json({ 
+        error: 'Unsupported payload structure - no entry UID found',
+        received: { 
+          event, 
+          module, 
+          dataKeys: Object.keys(data),
+          hasNestedData: !!(data.data && typeof data.data === 'object')
+        },
+        supportedFormats: [
+          'module: "entry", data: { entry: {...} }',
+          'data: { uid: "...", content_type_uid: "..." }',
+          'data: { data: { uid: "...", content_type_uid: "..." } }',
+          'data: { uid: "..." } with content type in headers'
+        ]
+      });
+    }
+
+    // Validate that we have the required data
+    if (!entryUid || !contentType) {
+      console.error('Missing required data after extraction:', {
+        entryUid,
+        contentType,
+        event,
+        dataKeys: Object.keys(data)
+      });
+      return res.status(400).json({
+        error: 'Missing required entry UID or content type',
+        extracted: { entryUid, contentType, locale }
+      });
     }
 
     console.log(`Processing webhook: ${event} for ${contentType}:${entryUid} (${locale})`);
 
     // Debug the webhook data structure
     console.log(`Webhook entry data structure:`, {
-      uid: entryData.uid,
-      title: entryData.title,
-      availableFields: Object.keys(entryData).filter(key => !key.startsWith('_')),
-      imageField: entryData.image ? 'present' : 'absent',
-      featuredImageField: entryData.featured_image ? 'present' : 'absent',
-      imagesField: entryData.images ? 'present' : 'absent',
-      hasImageFields: !!(entryData.image || entryData.featured_image || entryData.images)
+      uid: entryData?.uid,
+      title: entryData?.title,
+      availableFields: entryData ? Object.keys(entryData).filter(key => !key.startsWith('_')) : [],
+      imageField: entryData?.image ? 'present' : 'absent',
+      featuredImageField: entryData?.featured_image ? 'present' : 'absent',
+      imagesField: entryData?.images ? 'present' : 'absent',
+      hasImageFields: !!(entryData?.image || entryData?.featured_image || entryData?.images)
     });
 
     const index = pinecone.Index(process.env.PINECONE_INDEX);
 
+    // FIXED: Handle all webhook events including create
     switch (event) {
       case 'entry.publish':
       case 'publish':
@@ -1104,6 +1189,11 @@ app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
       case 'entry.update':
       case 'update':
         await handleEntryUpdate(entryData, contentType, locale, index);
+        break;
+        
+      case 'entry.create':
+      case 'create':
+        await handleEntryCreate(entryData, contentType, locale, index);
         break;
         
       case 'entry.unpublish':
@@ -1125,7 +1215,11 @@ app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
         break;
         
       default:
-        console.log(`Unhandled webhook event: ${event}`);
+        console.log(`Unhandled webhook event: ${event} - treating as create/update`);
+        // Treat unknown events as create/update to be safe
+        if (entryData) {
+          await handleEntryCreate(entryData, contentType, locale, index);
+        }
     }
 
     res.status(200).json({ 
@@ -1134,7 +1228,9 @@ app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
       event,
       entryUid: entryUid || 'asset',
       contentType: contentType || 'asset',
-      timestamp: new Date().toISOString()
+      locale: locale || 'en-us',
+      timestamp: new Date().toISOString(),
+      processedImages: entryData ? extractImageUrls(entryData).length : 0
     });
 
   } catch (error) {
@@ -1142,7 +1238,8 @@ app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
     res.status(500).json({ 
       error: 'Webhook processing failed', 
       details: error.message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
@@ -1152,9 +1249,10 @@ app.get('/api/webhook/test', (req, res) => {
   res.json({
     status: 'Webhook endpoint is active',
     timestamp: new Date().toISOString(),
-    authentication: 'Basic Auth required',
+    authentication: process.env.WEBHOOK_USERNAME ? 'Basic Auth required' : 'No authentication configured',
     supportedEvents: [
       'entry.publish',
+      'entry.create',
       'entry.update', 
       'entry.unpublish',
       'entry.delete'
@@ -1164,6 +1262,12 @@ app.get('/api/webhook/test', (req, res) => {
       'asset.update',
       'asset.unpublish', 
       'asset.delete'
+    ],
+    supportedFormats: [
+      'Standard: module="entry", data.entry={...}',
+      'Direct: data={uid, content_type_uid, ...}',
+      'Nested: data.data={uid, content_type_uid, ...}',
+      'UID only: data={uid} with content type lookup'
     ]
   });
 });
@@ -1196,7 +1300,8 @@ app.post('/api/reindex/:contentType/:entryUid', authenticateWebhook, async (req,
       entryUid,
       contentType,
       locale,
-      title: entry.title || 'Untitled'
+      title: entry.title || 'Untitled',
+      imagesProcessed: extractImageUrls(entry).length
     });
 
   } catch (error) {
@@ -1237,13 +1342,16 @@ app.post('/api/reindex-content-type/:contentType', authenticateWebhook, async (r
     const index = pinecone.Index(process.env.PINECONE_INDEX);
     let successCount = 0;
     let errorCount = 0;
+    let imagesProcessed = 0;
     const errors = [];
 
     for (const entry of entries) {
       try {
+        const imageCount = extractImageUrls(entry).length;
         await reindexEntry(entry, contentType, locale, index);
         successCount++;
-        console.log(`Reindexed: ${entry.uid}`);
+        imagesProcessed += imageCount;
+        console.log(`Reindexed: ${entry.uid} (${imageCount} images)`);
       } catch (error) {
         errorCount++;
         errors.push({
@@ -1262,6 +1370,7 @@ app.post('/api/reindex-content-type/:contentType', authenticateWebhook, async (r
       totalEntries: entries.length,
       successCount,
       errorCount,
+      imagesProcessed,
       errors: errors.slice(0, 10) // Limit error details
     });
 
@@ -1288,7 +1397,19 @@ app.use((req, res) => {
   res.status(404).json({
     error: 'Endpoint not found',
     path: req.path,
-    method: req.method
+    method: req.method,
+    availableEndpoints: [
+      'GET /health',
+      'POST /search', 
+      'POST /analyze-image',
+      'GET /test-data',
+      'GET /debug-vectors',
+      'GET /debug-contentstack/:contentType/:entryId?',
+      'POST /api/webhook/contentstack',
+      'GET /api/webhook/test',
+      'POST /api/reindex/:contentType/:entryUid',
+      'POST /api/reindex-content-type/:contentType'
+    ]
   });
 });
 
@@ -1318,5 +1439,6 @@ if (process.env.NODE_ENV !== 'production') {
     console.log(`   - Real-time sync: ✅`);
     console.log(`   - Enhanced asset handling: ✅`);
     console.log(`   - Enhanced content type mapping: ✅`);
+    console.log(`   - Enhanced webhook parsing: ✅`);
   });
 }
