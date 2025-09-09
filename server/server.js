@@ -436,8 +436,28 @@ async function reindexEntry(entryData, contentType, locale, index) {
       throw new Error("Failed to get embeddings from Cohere");
     }
 
-    // Extract images
+
+    // Force image URLs to use https
+function ensureHttpsUrl(url) {
+  if (!url) return null;
+  try {
+    let u = new URL(url, "https://dummy-base.com"); // handles relative
+    if (u.protocol !== "https:") {
+      u.protocol = "https:";
+    }
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
+
+// Extract images
     const images = extractImageUrls(entryData);
+    console.log(`🖼️ Found ${images.length} images for entry ${entryData.uid}`);
+    if (images.length > 0) {
+      console.log(`   Image URLs:`, images);
+    }
     
     // Prepare metadata
     const metadata = {
@@ -455,18 +475,25 @@ async function reindexEntry(entryData, contentType, locale, index) {
       category: entryData.category || contentType
     };
 
-    // Add image metadata if images exist
+    // Add enhanced image metadata if images exist
     if (images.length > 0) {
       metadata.primary_image = images[0];
       metadata.all_images = images;
       metadata.image_count = images.length;
       metadata.has_images = true;
+      console.log(`   ✅ Added image metadata: primary=${images[0].substring(0, 50)}...`);
+    } else {
+      console.log(`   ⚠️ No images found for entry ${entryData.uid}`);
     }
 
     // Add additional fields that might be useful for search
     if (entryData.price) metadata.price = entryData.price;
     if (entryData.duration) metadata.duration = entryData.duration;
     if (entryData.author) metadata.author = entryData.author;
+
+    // Enhanced flags for better search functionality
+    metadata.visual_match = images.length > 0 ? true : false;
+    metadata.multimodal_content = images.length > 0 ? true : false;
 
     // Update in Pinecone
     const vectorId = `${entryData.uid}_${locale}`;
@@ -917,6 +944,17 @@ app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
     }
 
     console.log(`📝 Processing webhook: ${event} for ${contentType}:${entryUid} (${locale})`);
+
+    // Debug the webhook data structure
+    console.log(`🔍 Webhook entry data structure:`, {
+      uid: entryData.uid,
+      title: entryData.title,
+      availableFields: Object.keys(entryData).filter(key => !key.startsWith('_')),
+      imageField: entryData.image,
+      featuredImageField: entryData.featured_image,
+      imagesField: entryData.images,
+      hasImageFields: !!(entryData.image || entryData.featured_image || entryData.images)
+    });
 
     const index = pinecone.Index(process.env.PINECONE_INDEX);
 
