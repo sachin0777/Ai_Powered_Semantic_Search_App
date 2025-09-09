@@ -871,32 +871,41 @@ app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
 
     const index = pinecone.Index(process.env.PINECONE_INDEX);
 
-  // In your server.js, update the webhook handler switch statement:
-
-switch (event) {
+  switch (event) {
   case 'entry.publish':
-  case 'publish':  // Add this line
+  case 'publish':
     await handleEntryPublish(entryData, contentType, locale, index);
     break;
     
   case 'entry.update':
-  case 'update':  // Add this line
+  case 'update':
     await handleEntryUpdate(entryData, contentType, locale, index);
     break;
     
   case 'entry.unpublish':
-  case 'unpublish':  // Add this line
+  case 'unpublish':
     await handleEntryUnpublish(entryUid, contentType, locale, index);
     break;
     
   case 'entry.delete':
-  case 'delete':  // Add this line
+  case 'delete':
     await handleEntryDelete(entryUid, contentType, locale, index);
+    break;
+
+  // Add these new asset cases:
+  case 'asset.publish':
+  case 'asset.update':
+  case 'asset.unpublish':
+  case 'asset.delete':
+    console.log(`📷 Asset event received: ${event} for ${data.uid || 'unknown'}`);
+    // For assets, you might want to trigger re-indexing of related entries
+    // or handle asset-specific logic
     break;
     
   default:
     console.log(`⚠️ Unhandled webhook event: ${event}`);
 }
+
 
     res.status(200).json({ 
       success: true, 
