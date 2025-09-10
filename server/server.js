@@ -4,7 +4,7 @@ import dotenv from "dotenv";
 import { Pinecone } from "@pinecone-database/pinecone";
 import { CohereClient } from "cohere-ai";
 import OpenAI from "openai";
-import contentstack from "contentstack";
+import contentstack from '@contentstack/delivery-sdk';
 
 dotenv.config();
 
@@ -79,21 +79,23 @@ const initializeContentstack = () => {
     }
 
     // Create the stack configuration object
-    const stackConfig = {
-      api_key: process.env.CONTENTSTACK_API_KEY,
-      delivery_token: process.env.CONTENTSTACK_DELIVERY_TOKEN,
-      environment: process.env.CONTENTSTACK_ENVIRONMENT || 'production',
-      region: getContentstackRegion(process.env.CONTENTSTACK_REGION || 'US')
-    };
+   const stackConfig = {
+  apiKey: process.env.CONTENTSTACK_API_KEY,
+  deliveryToken: process.env.CONTENTSTACK_DELIVERY_TOKEN,
+  environment: process.env.CONTENTSTACK_ENVIRONMENT || 'production',
+  region: getContentstackRegion(process.env.CONTENTSTACK_REGION || 'US')
+};
+
+
 
     console.log('🔧 Contentstack config:', {
-      api_key: stackConfig.api_key ? stackConfig.api_key.substring(0, 8) + '...' : 'missing',
-      delivery_token: stackConfig.delivery_token ? stackConfig.delivery_token.substring(0, 8) + '...' : 'missing',
-      environment: stackConfig.environment,
-      region: process.env.CONTENTSTACK_REGION || 'US'
-    });
+  apiKey: stackConfig.apiKey ? stackConfig.apiKey.substring(0, 8) + '...' : 'missing',
+  deliveryToken: stackConfig.deliveryToken ? stackConfig.deliveryToken.substring(0, 8) + '...' : 'missing',
+  environment: stackConfig.environment,
+  region: process.env.CONTENTSTACK_REGION || 'US'
+});
 
-    const Stack = contentstack.Stack(stackConfig);
+    const Stack = contentstack.stack(stackConfig);
 
     console.log('✅ Contentstack Stack initialized successfully');
     return Stack;
