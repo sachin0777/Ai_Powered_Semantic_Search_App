@@ -83,8 +83,8 @@ function debugContentstackEntry(entry, contentType, entryIndex = 0) {
     const value = entry[field];
     if (!value) return false;
     
-    // Check if it's a string containing contentstack.io
-    if (typeof value === 'string' && value.includes('contentstack.io')) return true;
+    // Check if it's a string containing contentstack.com
+    if (typeof value === 'string' && value.includes('contentstack.com')) return true;
     
     // Check if it's an object with url property
     if (typeof value === 'object' && value !== null && value.url) return true;
@@ -153,7 +153,7 @@ function analyzeImageFields(entry) {
       }
     }
     
-    if (typeof value === 'string' && value.includes('contentstack.io')) {
+    if (typeof value === 'string' && value.includes('contentstack.com')) {
       analysis[fieldName] = {
         type: 'direct_url',
         url: value
@@ -180,7 +180,7 @@ function extractImageUrls(entry) {
       console.log(`      DEBUG: Field '${field}' exists with value:`, JSON.stringify(entry[field], null, 2));
       
       if (entry[field]) {
-        if (typeof entry[field] === 'string' && entry[field].includes('contentstack.io')) {
+        if (typeof entry[field] === 'string' && entry[field].includes('contentstack.com')) {
           console.log(`      DEBUG: Found direct URL in ${field}: ${entry[field]}`);
           images.push(ensureHttpsUrl(entry[field]));
         } else if (entry[field].url) {
@@ -206,7 +206,7 @@ function extractImageUrls(entry) {
   // Handle image arrays
   if (entry.images && Array.isArray(entry.images)) {
     entry.images.forEach(img => {
-      if (typeof img === 'string' && img.includes('contentstack.io') && isImageUrl(img)) {
+      if (typeof img === 'string' && img.includes('contentstack.com') && isImageUrl(img)) {
         images.push(ensureHttpsUrl(img));
       } else if (img && img.url && isImageUrl(img.url)) {
         images.push(ensureHttpsUrl(img.url));

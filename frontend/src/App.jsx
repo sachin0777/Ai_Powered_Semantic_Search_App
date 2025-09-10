@@ -138,10 +138,10 @@ const EnhancedSemanticSearch = () => {
   ];
 
   const contentstackRegions = [
-    { code: 'us', name: 'North America', endpoint: 'api.contentstack.io' },
-    { code: 'eu', name: 'Europe', endpoint: 'eu-api.contentstack.io' },
-    { code: 'azure-na', name: 'Azure North America', endpoint: 'azure-na-api.contentstack.io' },
-    { code: 'azure-eu', name: 'Azure Europe', endpoint: 'azure-eu-api.contentstack.io' }
+    { code: 'us', name: 'North America', endpoint: 'api.contentstack.com' },
+    { code: 'eu', name: 'Europe', endpoint: 'eu-api.contentstack.com' },
+    { code: 'azure-na', name: 'Azure North America', endpoint: 'azure-na-api.contentstack.com' },
+    { code: 'azure-eu', name: 'Azure Europe', endpoint: 'azure-eu-api.contentstack.com' }
   ];
 
   const visualSearchExamples = [
@@ -201,7 +201,7 @@ const EnhancedSemanticSearch = () => {
 
     setConnectionStatus('checking');
     try {
-      const regionEndpoint = contentstackRegions.find(r => r.code === contentstackConfig.region)?.endpoint || 'api.contentstack.io';
+      const regionEndpoint = contentstackRegions.find(r => r.code === contentstackConfig.region)?.endpoint || 'api.contentstack.com';
       
       const response = await fetch(`https://${regionEndpoint}/v3/content_types`, {
         method: 'GET',
@@ -236,7 +236,7 @@ const EnhancedSemanticSearch = () => {
 
     setIsLoadingEntries(true);
     try {
-      const regionEndpoint = contentstackRegions.find(r => r.code === contentstackConfig.region)?.endpoint || 'api.contentstack.io';
+      const regionEndpoint = contentstackRegions.find(r => r.code === contentstackConfig.region)?.endpoint || 'api.contentstack.com';
       
       const response = await fetch(`https://${regionEndpoint}/v3/content_types/article/entries`, {
         method: 'GET',
@@ -269,7 +269,7 @@ const EnhancedSemanticSearch = () => {
 
     setIsSaving(true);
     try {
-      const regionEndpoint = contentstackRegions.find(r => r.code === contentstackConfig.region)?.endpoint || 'api.contentstack.io';
+      const regionEndpoint = contentstackRegions.find(r => r.code === contentstackConfig.region)?.endpoint || 'api.contentstack.com';
       
       const entryData = {
         entry: {
@@ -328,7 +328,7 @@ const EnhancedSemanticSearch = () => {
     }
 
     try {
-      const regionEndpoint = contentstackRegions.find(r => r.code === contentstackConfig.region)?.endpoint || 'api.contentstack.io';
+      const regionEndpoint = contentstackRegions.find(r => r.code === contentstackConfig.region)?.endpoint || 'api.contentstack.com';
       
       const response = await fetch(`https://${regionEndpoint}/v3/content_types/article/entries/${entryUid}`, {
         method: 'DELETE',
@@ -541,7 +541,7 @@ const EnhancedSemanticSearch = () => {
         return `https:${imageUrl}`;
       }
       
-      if (imageUrl.includes('contentstack.io')) {
+      if (imageUrl.includes('contentstack.com')) {
         return `https://${imageUrl}`;
       }
       
