@@ -50,24 +50,25 @@ if (process.env.OPENAI_API_KEY) {
   console.log('✅ OpenAI client initialized successfully');
 }
 
-// Helper function to get the correct Contentstack region - FIXED VERSION
+
+// Replace the getContentstackRegion function with this:
 const getContentstackRegion = (regionCode = 'US') => {
-  // Map region codes to Contentstack Region constants
+  // In v4, regions are just strings, not constants
   const regionMap = {
-    'US': contentstack.Region.US,
-    'EU': contentstack.Region.EU,
-    'AZURE_NA': contentstack.Region.AZURE_NA,
-    'AZURE_EU': contentstack.Region.AZURE_EU,
-    'GCP_NA': contentstack.Region.GCP_NA,
+    'US': 'US',
+    'EU': 'EU', 
+    'AZURE_NA': 'AZURE_NA',
+    'AZURE_EU': 'AZURE_EU',
+    'GCP_NA': 'GCP_NA',
     // Add fallback for lowercase
-    'us': contentstack.Region.US,
-    'eu': contentstack.Region.EU,
-    'azure-na': contentstack.Region.AZURE_NA,
-    'azure-eu': contentstack.Region.AZURE_EU,
-    'gcp-na': contentstack.Region.GCP_NA
+    'us': 'US',
+    'eu': 'EU',
+    'azure-na': 'AZURE_NA',
+    'azure-eu': 'AZURE_EU',
+    'gcp-na': 'GCP_NA'
   };
   
-  return regionMap[regionCode] || contentstack.Region.US;
+  return regionMap[regionCode] || 'US';
 };
 
 // Initialize Contentstack - CORRECTED VERSION
