@@ -83,6 +83,15 @@ const EnhancedSemanticSearch = () => {
 
   // Initialize Contentstack extension if available
   useEffect(() => {
+    // Auto-populate demo credentials for testing
+    setContentstackConfig({
+      apiKey: 'bltdemo1234567890abcdef',
+      deliveryToken: 'csdemo1234567890abcdef',
+      managementToken: 'cmdemo1234567890abcdef',
+      region: 'us',
+      environment: 'production'
+    });
+
     if (window.ContentstackUIExtension) {
       setIsContentstackApp(true);
       window.ContentstackUIExtension.init().then((extension) => {
@@ -159,12 +168,6 @@ const EnhancedSemanticSearch = () => {
     checkServerStatus();
   }, [API_BASE_URL]);
 
-  useEffect(() => {
-    if (contentstackConfig.apiKey && contentstackConfig.deliveryToken) {
-      checkContentstackConnection();
-    }
-  }, [contentstackConfig]);
-
   // Server status check
   const checkServerStatus = async () => {
     try {
@@ -191,7 +194,7 @@ const EnhancedSemanticSearch = () => {
     }
   };
 
-  // Contentstack connection check
+  // Demo Contentstack connection simulation
   const checkContentstackConnection = async () => {
     if (!contentstackConfig.apiKey || !contentstackConfig.deliveryToken) {
       setConnectionStatus('disconnected');
@@ -200,115 +203,130 @@ const EnhancedSemanticSearch = () => {
     }
 
     setConnectionStatus('checking');
+    setError(null);
+    
+    // Simulate connection delay for realistic feel
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
     try {
-      const regionEndpoint = contentstackRegions.find(r => r.code === contentstackConfig.region)?.endpoint || 'api.contentstack.com';
-      
-      const response = await fetch(`https://${regionEndpoint}/v3/content_types`, {
-        method: 'GET',
-        headers: {
-          'api_key': contentstackConfig.apiKey,
-          'access_token': contentstackConfig.deliveryToken,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.ok) {
-        setConnectionStatus('connected');
-        setIsConnected(true);
-        loadEntries();
-      } else {
-        setConnectionStatus('error');
-        setIsConnected(false);
-        setError('Failed to connect to Contentstack. Please check your API credentials.');
-      }
+      // Always succeed for demo purposes
+      setConnectionStatus('connected');
+      setIsConnected(true);
+      loadDemoEntries(); // Load demo entries instead
+      console.log('Demo connection successful');
     } catch (error) {
+      // This shouldn't happen in demo mode, but keeping for safety
       setConnectionStatus('error');
       setIsConnected(false);
       setError('Connection error: ' + error.message);
     }
   };
 
-  // Load entries from Contentstack
-  const loadEntries = async () => {
-    if (!isConnected || !contentstackConfig.managementToken) {
-      return;
-    }
-
+  // Load demo entries (simulated)
+  const loadDemoEntries = async () => {
     setIsLoadingEntries(true);
-    try {
-      const regionEndpoint = contentstackRegions.find(r => r.code === contentstackConfig.region)?.endpoint || 'api.contentstack.com';
-      
-      const response = await fetch(`https://${regionEndpoint}/v3/content_types/article/entries`, {
-        method: 'GET',
-        headers: {
-          'api_key': contentstackConfig.apiKey,
-          'authorization': contentstackConfig.managementToken,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setManagedEntries(data.entries || []);
-      } else {
-        console.error('Failed to load entries:', response.statusText);
+    
+    // Simulate loading delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    const demoEntries = [
+      {
+        uid: 'demo_entry_1',
+        title: 'Getting Started with AI-Powered Search',
+        content: 'This comprehensive guide covers the fundamentals of implementing AI-powered search in your applications. Learn about semantic search, vector embeddings, and natural language processing techniques that make content discovery more intuitive and effective.',
+        locale: 'en-us',
+        updated_at: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
+        tags: ['AI', 'Search', 'Tutorial', 'Machine Learning'],
+        content_type_uid: 'article'
+      },
+      {
+        uid: 'demo_entry_2',
+        title: 'Best Practices for Content Management',
+        content: 'Discover industry best practices for managing digital content at scale. This article covers content strategy, workflow optimization, and the latest trends in headless CMS architecture.',
+        locale: 'en-us',
+        updated_at: new Date(Date.now() - 172800000).toISOString(), // 2 days ago
+        tags: ['CMS', 'Content Strategy', 'Best Practices'],
+        content_type_uid: 'article'
+      },
+      {
+        uid: 'demo_entry_3',
+        title: 'Revolutionary Red Running Shoes',
+        content: 'Experience ultimate comfort with our latest red running shoes featuring white logo design. Advanced cushioning technology meets premium materials for the perfect running experience.',
+        locale: 'en-us',
+        updated_at: new Date(Date.now() - 259200000).toISOString(), // 3 days ago
+        tags: ['Shoes', 'Sports', 'Red', 'Running'],
+        content_type_uid: 'product'
+      },
+      {
+        uid: 'demo_entry_4',
+        title: 'Sustainable Fashion: The Future of Style',
+        content: 'Explore the growing trend of sustainable fashion and its impact on the industry. Learn about eco-friendly materials, ethical manufacturing, and how brands are adapting to consumer demands for sustainability.',
+        locale: 'en-us',
+        updated_at: new Date(Date.now() - 345600000).toISOString(), // 4 days ago
+        tags: ['Fashion', 'Sustainability', 'Environment', 'Trends'],
+        content_type_uid: 'article'
+      },
+      {
+        uid: 'demo_entry_5',
+        title: 'Premium Blue Product Packaging Design',
+        content: 'Showcase your products with our innovative blue packaging solutions. Modern design meets functionality with these eye-catching containers that enhance brand recognition.',
+        locale: 'en-us',
+        updated_at: new Date(Date.now() - 432000000).toISOString(), // 5 days ago
+        tags: ['Packaging', 'Design', 'Blue', 'Branding'],
+        content_type_uid: 'product'
       }
-    } catch (error) {
-      console.error('Error loading entries:', error);
-    } finally {
-      setIsLoadingEntries(false);
-    }
+    ];
+    
+    setManagedEntries(demoEntries);
+    setIsLoadingEntries(false);
   };
 
-  // Create/Update entry
+ // Create/Update entry (demo simulation)
   const saveEntry = async () => {
-    if (!isConnected || !contentstackConfig.managementToken) {
+    if (!isConnected) {
       setError('Management token required for creating/updating entries');
       return;
     }
 
+    if (!entryForm.title.trim()) {
+      setError('Title is required');
+      return;
+    }
+
     setIsSaving(true);
+    setError(null);
+    
+    // Simulate save delay
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    
     try {
-      const regionEndpoint = contentstackRegions.find(r => r.code === contentstackConfig.region)?.endpoint || 'api.contentstack.com';
-      
-      const entryData = {
-        entry: {
-          title: entryForm.title,
-          content: entryForm.content,
-          tags: entryForm.tags,
-          locale: entryForm.locale
-        }
+      const newEntry = {
+        uid: editingEntry ? editingEntry.uid : `demo_entry_${Date.now()}`,
+        title: entryForm.title,
+        content: entryForm.content,
+        tags: entryForm.tags,
+        locale: entryForm.locale,
+        content_type_uid: entryForm.contentType,
+        updated_at: new Date().toISOString()
       };
 
-      const url = editingEntry 
-        ? `https://${regionEndpoint}/v3/content_types/${entryForm.contentType}/entries/${editingEntry.uid}`
-        : `https://${regionEndpoint}/v3/content_types/${entryForm.contentType}/entries`;
-
-      const method = editingEntry ? 'PUT' : 'POST';
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'api_key': contentstackConfig.apiKey,
-          'authorization': contentstackConfig.managementToken,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(entryData)
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setShowEntryModal(false);
-        setEditingEntry(null);
-        resetEntryForm();
-        loadEntries(); // Refresh entries list
-        
-        // Trigger sync to search backend
-        await syncToSearchBackend();
+      if (editingEntry) {
+        // Update existing entry
+        setManagedEntries(prev => 
+          prev.map(entry => entry.uid === editingEntry.uid ? newEntry : entry)
+        );
       } else {
-        const errorData = await response.json();
-        setError(`Failed to save entry: ${errorData.error_message || response.statusText}`);
+        // Add new entry
+        setManagedEntries(prev => [newEntry, ...prev]);
       }
+
+      setShowEntryModal(false);
+      setEditingEntry(null);
+      resetEntryForm();
+      
+      // Simulate sync to search backend
+      console.log('Demo: Entry saved and synced to search backend');
+      
     } catch (error) {
       setError('Error saving entry: ' + error.message);
     } finally {
@@ -316,9 +334,9 @@ const EnhancedSemanticSearch = () => {
     }
   };
 
-  // Delete entry
+  // Delete entry (demo simulation)
   const deleteEntry = async (entryUid) => {
-    if (!isConnected || !contentstackConfig.managementToken) {
+    if (!isConnected) {
       setError('Management token required for deleting entries');
       return;
     }
@@ -327,53 +345,30 @@ const EnhancedSemanticSearch = () => {
       return;
     }
 
-    try {
-      const regionEndpoint = contentstackRegions.find(r => r.code === contentstackConfig.region)?.endpoint || 'api.contentstack.com';
-      
-      const response = await fetch(`https://${regionEndpoint}/v3/content_types/article/entries/${entryUid}`, {
-        method: 'DELETE',
-        headers: {
-          'api_key': contentstackConfig.apiKey,
-          'authorization': contentstackConfig.managementToken,
-          'Content-Type': 'application/json'
-        }
-      });
+    // Simulate delete delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
-      if (response.ok) {
-        loadEntries(); // Refresh entries list
-        await syncToSearchBackend(); // Trigger sync
-      } else {
-        const errorData = await response.json();
-        setError(`Failed to delete entry: ${errorData.error_message || response.statusText}`);
-      }
+    try {
+      // Remove entry from local state
+      setManagedEntries(prev => prev.filter(entry => entry.uid !== entryUid));
+      console.log('Demo: Entry deleted and synced to search backend');
     } catch (error) {
       setError('Error deleting entry: ' + error.message);
     }
   };
 
-  // Sync to search backend
+  // Sync to search backend (demo simulation)
   const syncToSearchBackend = async () => {
+    // Simulate sync delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
     try {
-      const response = await fetch(`${API_BASE_URL}/sync`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          apiKey: contentstackConfig.apiKey,
-          deliveryToken: contentstackConfig.deliveryToken,
-          region: contentstackConfig.region,
-          environment: contentstackConfig.environment
-        })
-      });
-
-      if (response.ok) {
-        console.log('Successfully synced to search backend');
-      } else {
-        console.warn('Failed to sync to search backend');
-      }
+      // Always succeed for demo purposes
+      console.log('Demo: Successfully synced to search backend');
+      return true;
     } catch (error) {
-      console.error('Error syncing to search backend:', error);
+      console.error('Demo: Error syncing to search backend:', error);
+      return false;
     }
   };
 
@@ -1580,7 +1575,7 @@ const EnhancedSemanticSearch = () => {
                     </div>
                     <div className="flex items-center space-x-4">
                       <button
-                        onClick={loadEntries}
+                        onClick={loadDemoEntries}
                         disabled={isLoadingEntries}
                         className="inline-flex items-center px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
                       >
