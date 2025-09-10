@@ -13,7 +13,6 @@ const requiredEnvVars = [
   'COHERE_API_KEY',
   'PINECONE_API_KEY',
   'PINECONE_INDEX',
-  'PINECONE_ENVIRONMENT'
 ];
 
 for (const envVar of requiredEnvVars) {
@@ -28,19 +27,16 @@ const cohere = new CohereClient({
   token: process.env.COHERE_API_KEY,
 });
 
-// Initialize Pinecone with version compatibility
+// Initialize Pinecone
 let pinecone;
 try {
-  // Try new SDK format first
   pinecone = new Pinecone({
     apiKey: process.env.PINECONE_API_KEY,
   });
+  console.log('✅ Pinecone client initialized successfully');
 } catch (error) {
-  // Try old SDK format
-  pinecone = new Pinecone({
-    apiKey: process.env.PINECONE_API_KEY,
-    environment: process.env.PINECONE_ENVIRONMENT,
-  });
+  console.error('❌ Failed to initialize Pinecone:', error.message);
+  process.exit(1);
 }
 
 // Initialize OpenAI only if API key is provided
@@ -49,27 +45,53 @@ if (process.env.OPENAI_API_KEY) {
   openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
   });
+  console.log('✅ OpenAI client initialized successfully');
 }
 
-// Helper function to get the correct Contentstack region
-const getContentstackRegion = () => {
-  const region = process.env.CONTENTSTACK_REGION;
-  switch(region) {
-    case 'EU': return contentstack.Region.EU;
-    case 'AZURE_NA': return contentstack.Region.AZURE_NA;
-    case 'AZURE_EU': return contentstack.Region.AZURE_EU;
-    case 'US':
-    default: return contentstack.Region.US;
+// Helper function to get the correct Contentstack region - FIXED VERSION
+const getContentstackRegion = (regionCode = 'US') => {
+  // Map region codes to Contentstack Region constants
+  const regionMap = {
+    'US': contentstack.Region.US,
+    'EU': contentstack.Region.EU,
+    'AZURE_NA': contentstack.Region.AZURE_NA,
+    'AZURE_EU': contentstack.Region.AZURE_EU,
+    'GCP_NA': contentstack.Region.GCP_NA,
+    // Add fallback for lowercase
+    'us': contentstack.Region.US,
+    'eu': contentstack.Region.EU,
+    'azure-na': contentstack.Region.AZURE_NA,
+    'azure-eu': contentstack.Region.AZURE_EU,
+    'gcp-na': contentstack.Region.GCP_NA
+  };
+  
+  return regionMap[regionCode] || contentstack.Region.US;
+};
+
+// Initialize Contentstack - Using environment variables with fallbacks
+const initializeContentstack = () => {
+  try {
+    if (!process.env.CONTENTSTACK_API_KEY || !process.env.CONTENTSTACK_DELIVERY_TOKEN) {
+      console.log('⚠️ Contentstack credentials not provided in environment variables');
+      return null;
+    }
+
+    const Stack = contentstack.Stack({
+      api_key: process.env.CONTENTSTACK_API_KEY,
+      delivery_token: process.env.CONTENTSTACK_DELIVERY_TOKEN,
+      environment: process.env.CONTENTSTACK_ENVIRONMENT || 'production',
+      region: getContentstackRegion(process.env.CONTENTSTACK_REGION)
+    });
+
+    console.log('✅ Contentstack Stack initialized successfully');
+    return Stack;
+  } catch (error) {
+    console.error('❌ Failed to initialize Contentstack:', error.message);
+    return null;
   }
 };
 
-// Initialize Contentstack
-const Stack = contentstack.Stack({
-  api_key: process.env.CONTENTSTACK_API_KEY,
-  delivery_token: process.env.CONTENTSTACK_DELIVERY_TOKEN,
-  environment: process.env.CONTENTSTACK_ENVIRONMENT,
-  region: getContentstackRegion()
-});
+const Stack = initializeContentstack();
 
 const app = express();
 
@@ -529,7 +551,8 @@ app.get('/health', (req, res) => {
       semantic_search: true,
       image_analysis: !!openai,
       multimodal_search: true,
-      webhook_integration: true
+      webhook_integration: true,
+      contentstack_connected: !!Stack
     }
   });
 });
@@ -537,6 +560,13 @@ app.get('/health', (req, res) => {
 // Debug endpoint for Contentstack data inspection
 app.get('/debug-contentstack/:contentType/:entryId?', async (req, res) => {
   try {
+    if (!Stack) {
+      return res.status(503).json({
+        error: 'Contentstack not configured',
+        details: 'Please set CONTENTSTACK_API_KEY and CONTENTSTACK_DELIVERY_TOKEN environment variables'
+      });
+    }
+
     const { contentType, entryId } = req.params;
     
     if (entryId) {
@@ -879,6 +909,214 @@ app.get('/debug-vectors', async (req, res) => {
   }
 });
 
+// Dynamic Contentstack connection endpoint
+app.post('/connect-contentstack', async (req, res) => {
+  try {
+    const { apiKey, deliveryToken, managementToken, region = 'US', environment = 'production' } = req.body;
+    
+    if (!apiKey || !deliveryToken) {
+      return res.status(400).json({
+        error: 'API key and delivery token are required'
+      });
+    }
+
+    // Create a new Contentstack stack instance with provided credentials
+    const tempStack = contentstack.Stack({
+      api_key: apiKey,
+      delivery_token: deliveryToken,
+      environment: environment,
+      region: getContentstackRegion(region)
+    });
+
+    // Test the connection by fetching content types
+    try {
+      const contentTypes = await tempStack.getContentTypes();
+      
+      res.json({
+        success: true,
+        message: 'Successfully connected to Contentstack',
+        contentTypes: contentTypes.content_types?.map(ct => ({
+          uid: ct.uid,
+          title: ct.title,
+          description: ct.description
+        })) || [],
+        stack: {
+          apiKey: apiKey.substring(0, 8) + '...',
+          environment,
+          region
+        }
+      });
+    } catch (connectionError) {
+      console.error('Contentstack connection test failed:', connectionError);
+      res.status(401).json({
+        error: 'Failed to connect to Contentstack',
+        details: connectionError.message
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Connect Contentstack error:', error);
+    res.status(500).json({
+      error: 'Connection failed',
+      details: error.message
+    });
+  }
+});
+
+// Fetch entries from Contentstack with dynamic credentials
+app.post('/fetch-entries', async (req, res) => {
+  try {
+    const { 
+      apiKey, 
+      deliveryToken, 
+      contentType = 'article', 
+      region = 'US', 
+      environment = 'production',
+      limit = 10 
+    } = req.body;
+    
+    if (!apiKey || !deliveryToken) {
+      return res.status(400).json({
+        error: 'API key and delivery token are required'
+      });
+    }
+
+    // Create a new Contentstack stack instance
+    const tempStack = contentstack.Stack({
+      api_key: apiKey,
+      delivery_token: deliveryToken,
+      environment: environment,
+      region: getContentstackRegion(region)
+    });
+
+    // Fetch entries
+    const query = tempStack.ContentType(contentType).Query().limit(limit);
+    const result = await query.toJSON().find();
+    
+    let entries = [];
+    if (result && Array.isArray(result)) {
+      entries = Array.isArray(result[0]) ? result[0] : result;
+    } else if (result && result.entries) {
+      entries = result.entries;
+    }
+
+    res.json({
+      success: true,
+      entries: entries.map(entry => ({
+        uid: entry.uid,
+        title: entry.title || 'Untitled',
+        content: entry.content ? 
+          (typeof entry.content === 'string' ? entry.content.substring(0, 200) + '...' : 'Rich content') :
+          'No content',
+        updated_at: entry.updated_at,
+        created_at: entry.created_at,
+        locale: entry.locale || 'en-us',
+        tags: entry.tags || [],
+        url: entry.url
+      })),
+      totalEntries: entries.length,
+      contentType,
+      environment,
+      region
+    });
+
+  } catch (error) {
+    console.error('❌ Fetch entries error:', error);
+    res.status(500).json({
+      error: 'Failed to fetch entries',
+      details: error.message
+    });
+  }
+});
+
+// Sync entries to search backend
+app.post('/sync-entries', async (req, res) => {
+  try {
+    const { 
+      apiKey, 
+      deliveryToken, 
+      contentTypes = ['article'], 
+      region = 'US', 
+      environment = 'production',
+      limit = 50
+    } = req.body;
+    
+    if (!apiKey || !deliveryToken) {
+      return res.status(400).json({
+        error: 'API key and delivery token are required'
+      });
+    }
+
+    // Create a new Contentstack stack instance
+    const tempStack = contentstack.Stack({
+      api_key: apiKey,
+      delivery_token: deliveryToken,
+      environment: environment,
+      region: getContentstackRegion(region)
+    });
+
+    const index = pinecone.Index(process.env.PINECONE_INDEX);
+    let totalSynced = 0;
+    let errors = [];
+
+    for (const contentType of contentTypes) {
+      try {
+        console.log(`📥 Syncing content type: ${contentType}`);
+        
+        // Fetch entries
+        const query = tempStack.ContentType(contentType).Query().limit(limit);
+        const result = await query.toJSON().find();
+        
+        let entries = [];
+        if (result && Array.isArray(result)) {
+          entries = Array.isArray(result[0]) ? result[0] : result;
+        } else if (result && result.entries) {
+          entries = result.entries;
+        }
+
+        console.log(`📄 Found ${entries.length} entries for ${contentType}`);
+
+        for (const entry of entries) {
+          try {
+            await reindexEntry(entry, contentType, entry.locale || 'en-us', index);
+            totalSynced++;
+          } catch (entryError) {
+            console.error(`❌ Failed to sync entry ${entry.uid}:`, entryError.message);
+            errors.push({
+              entryUid: entry.uid,
+              contentType,
+              error: entryError.message
+            });
+          }
+        }
+
+      } catch (contentTypeError) {
+        console.error(`❌ Failed to sync content type ${contentType}:`, contentTypeError.message);
+        errors.push({
+          contentType,
+          error: contentTypeError.message
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Sync completed. ${totalSynced} entries synced.`,
+      totalSynced,
+      contentTypes,
+      errors: errors.slice(0, 10), // Limit error details
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ Sync entries error:', error);
+    res.status(500).json({
+      error: 'Sync failed',
+      details: error.message
+    });
+  }
+});
+
 // ===========================================
 // WEBHOOK ENDPOINTS - ENHANCED INTEGRATION
 // ===========================================
@@ -930,69 +1168,13 @@ app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
         hasUid: !!data.uid
       });
       
-      // Check if this might be an entry without content_type_uid
-      if (data.uid && !data.content_type_uid && !data.asset) {
-        console.log('🔍 Entry-like payload without content_type_uid, attempting to fetch from Contentstack...');
-        
-        try {
-          // Try to determine content type by fetching the entry
-          const contentTypes = await Stack.getContentTypes();
-          let foundEntry = null;
-          let foundContentType = null;
-          
-          for (const ct of contentTypes.content_types || []) {
-            try {
-              const entry = await Stack.ContentType(ct.uid).Entry(data.uid).toJSON().fetch();
-              if (entry && entry.uid === data.uid) {
-                foundEntry = entry;
-                foundContentType = ct.uid;
-                break;
-              }
-            } catch (e) {
-              // Entry not found in this content type, continue
-            }
-          }
-          
-          if (foundEntry && foundContentType) {
-            console.log(`✅ Found entry ${data.uid} in content type ${foundContentType}`);
-            entryData = foundEntry;
-            contentType = foundContentType;
-            entryUid = data.uid;
-            locale = foundEntry.locale || 'en-us';
-          } else {
-            console.log(`❌ Could not find entry ${data.uid} in any content type`);
-            return res.status(404).json({ 
-              error: 'Entry not found in any content type',
-              uid: data.uid
-            });
-          }
-        } catch (fetchError) {
-          console.error('❌ Failed to fetch entry details:', fetchError.message);
-          return res.status(500).json({
-            error: 'Failed to determine content type',
-            details: fetchError.message
-          });
-        }
-      } else {
-        return res.status(400).json({ 
-          error: 'Unsupported payload structure',
-          received: { event, module, dataKeys: Object.keys(data) }
-        });
-      }
+      return res.status(400).json({ 
+        error: 'Unsupported payload structure',
+        received: { event, module, dataKeys: Object.keys(data) }
+      });
     }
 
     console.log(`📝 Processing webhook: ${event} for ${contentType}:${entryUid} (${locale})`);
-
-    // Debug the webhook data structure
-    console.log(`🔍 Webhook entry data structure:`, {
-      uid: entryData.uid,
-      title: entryData.title,
-      availableFields: Object.keys(entryData).filter(key => !key.startsWith('_')),
-      imageField: entryData.image ? 'present' : 'absent',
-      featuredImageField: entryData.featured_image ? 'present' : 'absent',
-      imagesField: entryData.images ? 'present' : 'absent',
-      hasImageFields: !!(entryData.image || entryData.featured_image || entryData.images)
-    });
 
     const index = pinecone.Index(process.env.PINECONE_INDEX);
 
@@ -1073,12 +1255,29 @@ app.get('/api/webhook/test', (req, res) => {
 app.post('/api/reindex/:contentType/:entryUid', authenticateWebhook, async (req, res) => {
   try {
     const { contentType, entryUid } = req.params;
-    const { locale = 'en-us' } = req.body;
+    const { locale = 'en-us', apiKey, deliveryToken, region = 'US', environment = 'production' } = req.body;
 
     console.log(`🔄 Manual reindex requested for ${contentType}:${entryUid}`);
 
+    // Use provided credentials or fall back to environment
+    const stackConfig = {
+      api_key: apiKey || process.env.CONTENTSTACK_API_KEY,
+      delivery_token: deliveryToken || process.env.CONTENTSTACK_DELIVERY_TOKEN,
+      environment: environment,
+      region: getContentstackRegion(region)
+    };
+
+    if (!stackConfig.api_key || !stackConfig.delivery_token) {
+      return res.status(400).json({
+        error: 'Contentstack credentials required',
+        details: 'Provide apiKey and deliveryToken in request body or set environment variables'
+      });
+    }
+
+    const tempStack = contentstack.Stack(stackConfig);
+    
     // Fetch entry from Contentstack
-    const entry = await Stack.ContentType(contentType).Entry(entryUid).toJSON().fetch();
+    const entry = await tempStack.ContentType(contentType).Entry(entryUid).toJSON().fetch();
     
     if (!entry) {
       return res.status(404).json({
@@ -1113,12 +1312,36 @@ app.post('/api/reindex/:contentType/:entryUid', authenticateWebhook, async (req,
 app.post('/api/reindex-content-type/:contentType', authenticateWebhook, async (req, res) => {
   try {
     const { contentType } = req.params;
-    const { locale = 'en-us', limit = 100 } = req.body;
+    const { 
+      locale = 'en-us', 
+      limit = 100, 
+      apiKey, 
+      deliveryToken, 
+      region = 'US', 
+      environment = 'production' 
+    } = req.body;
 
     console.log(`🔄 Bulk reindex requested for content type: ${contentType}`);
 
+    // Use provided credentials or fall back to environment
+    const stackConfig = {
+      api_key: apiKey || process.env.CONTENTSTACK_API_KEY,
+      delivery_token: deliveryToken || process.env.CONTENTSTACK_DELIVERY_TOKEN,
+      environment: environment,
+      region: getContentstackRegion(region)
+    };
+
+    if (!stackConfig.api_key || !stackConfig.delivery_token) {
+      return res.status(400).json({
+        error: 'Contentstack credentials required',
+        details: 'Provide apiKey and deliveryToken in request body or set environment variables'
+      });
+    }
+
+    const tempStack = contentstack.Stack(stackConfig);
+
     // Fetch entries from Contentstack
-    const query = Stack.ContentType(contentType).Query().limit(limit);
+    const query = tempStack.ContentType(contentType).Query().limit(limit);
     const result = await query.toJSON().find();
     
     let entries = [];
@@ -1218,6 +1441,6 @@ if (process.env.NODE_ENV !== 'production') {
     console.log(`   - Webhook integration: ✅`);
     console.log(`   - Real-time sync: ✅`);
     console.log(`   - Enhanced asset handling: ✅`);
+    console.log(`   - Dynamic Contentstack connection: ✅`);
   });
 }
-//done
