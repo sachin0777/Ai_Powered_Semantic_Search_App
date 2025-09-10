@@ -13,6 +13,8 @@ const requiredEnvVars = [
   'COHERE_API_KEY',
   'PINECONE_API_KEY',
   'PINECONE_INDEX',
+  'CONTENTSTACK_API_KEY',
+  'CONTENTSTACK_DELIVERY_TOKEN',
 ];
 
 for (const envVar of requiredEnvVars) {
@@ -68,7 +70,7 @@ const getContentstackRegion = (regionCode = 'US') => {
   return regionMap[regionCode] || contentstack.Region.US;
 };
 
-// Initialize Contentstack - Using environment variables with fallbacks
+// Initialize Contentstack - CORRECTED VERSION
 const initializeContentstack = () => {
   try {
     if (!process.env.CONTENTSTACK_API_KEY || !process.env.CONTENTSTACK_DELIVERY_TOKEN) {
@@ -76,12 +78,22 @@ const initializeContentstack = () => {
       return null;
     }
 
-    const Stack = contentstack.Stack({
+    // Create the stack configuration object
+    const stackConfig = {
       api_key: process.env.CONTENTSTACK_API_KEY,
       delivery_token: process.env.CONTENTSTACK_DELIVERY_TOKEN,
       environment: process.env.CONTENTSTACK_ENVIRONMENT || 'production',
-      region: getContentstackRegion(process.env.CONTENTSTACK_REGION)
+      region: getContentstackRegion(process.env.CONTENTSTACK_REGION || 'US')
+    };
+
+    console.log('🔧 Contentstack config:', {
+      api_key: stackConfig.api_key ? stackConfig.api_key.substring(0, 8) + '...' : 'missing',
+      delivery_token: stackConfig.delivery_token ? stackConfig.delivery_token.substring(0, 8) + '...' : 'missing',
+      environment: stackConfig.environment,
+      region: process.env.CONTENTSTACK_REGION || 'US'
     });
+
+    const Stack = contentstack.Stack(stackConfig);
 
     console.log('✅ Contentstack Stack initialized successfully');
     return Stack;
@@ -92,6 +104,7 @@ const initializeContentstack = () => {
 };
 
 const Stack = initializeContentstack();
+
 
 const app = express();
 
