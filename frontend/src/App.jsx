@@ -85,11 +85,11 @@ const EnhancedSemanticSearch = () => {
   useEffect(() => {
     // Auto-populate demo credentials for testing
     setContentstackConfig({
-      apiKey: 'bltdemo1234567890abcdef',
-      deliveryToken: 'csdemo1234567890abcdef',
-      managementToken: 'cmdemo1234567890abcdef',
-      region: 'us',
-      environment: 'production'
+      apiKey: 'blt38f9aa5e68768bc6',
+      deliveryToken: 'cs74c890107d3876a473be5ebc',
+      managementToken: 'csb84ed46ddc3a4e9436799fe2',
+      region: 'eu',
+      environment: 'development'
     });
 
     if (window.ContentstackUIExtension) {

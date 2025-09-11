@@ -19,7 +19,7 @@ const requiredEnvVars = [
 
 for (const envVar of requiredEnvVars) {
   if (!process.env[envVar]) {
-    console.error(`❌ Missing required environment variable: ${envVar}`);
+    console.error(`Missing required environment variable: ${envVar}`);
     process.exit(1);
   }
 }
@@ -35,9 +35,9 @@ try {
   pinecone = new Pinecone({
     apiKey: process.env.PINECONE_API_KEY,
   });
-  console.log('✅ Pinecone client initialized successfully');
+  console.log('Pinecone client initialized successfully');
 } catch (error) {
-  console.error('❌ Failed to initialize Pinecone:', error.message);
+  console.error('Failed to initialize Pinecone:', error.message);
   process.exit(1);
 }
 
@@ -47,20 +47,19 @@ if (process.env.OPENAI_API_KEY) {
   openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
   });
-  console.log('✅ OpenAI client initialized successfully');
+  console.log('OpenAI client initialized successfully');
+} else {
+  console.log('OpenAI API key not provided - image analysis will be disabled');
 }
 
-
-// Replace the getContentstackRegion function with this:
+// Contentstack region helper
 const getContentstackRegion = (regionCode = 'US') => {
-  // In v4, regions are just strings, not constants
   const regionMap = {
     'US': 'US',
     'EU': 'EU', 
     'AZURE_NA': 'AZURE_NA',
     'AZURE_EU': 'AZURE_EU',
     'GCP_NA': 'GCP_NA',
-    // Add fallback for lowercase
     'us': 'US',
     'eu': 'EU',
     'azure-na': 'AZURE_NA',
@@ -71,47 +70,42 @@ const getContentstackRegion = (regionCode = 'US') => {
   return regionMap[regionCode] || 'US';
 };
 
-// Initialize Contentstack - CORRECTED VERSION
+// Initialize Contentstack
 const initializeContentstack = () => {
   try {
     if (!process.env.CONTENTSTACK_API_KEY || !process.env.CONTENTSTACK_DELIVERY_TOKEN) {
-      console.log('⚠️ Contentstack credentials not provided in environment variables');
+      console.log('Contentstack credentials not provided in environment variables');
       return null;
     }
 
-    // Create the stack configuration object
-   const stackConfig = {
-  apiKey: process.env.CONTENTSTACK_API_KEY,
-  deliveryToken: process.env.CONTENTSTACK_DELIVERY_TOKEN,
-  environment: process.env.CONTENTSTACK_ENVIRONMENT || 'production',
-  region: getContentstackRegion(process.env.CONTENTSTACK_REGION || 'US')
-};
+    const stackConfig = {
+      apiKey: process.env.CONTENTSTACK_API_KEY,
+      deliveryToken: process.env.CONTENTSTACK_DELIVERY_TOKEN,
+      environment: process.env.CONTENTSTACK_ENVIRONMENT || 'production',
+      region: getContentstackRegion(process.env.CONTENTSTACK_REGION || 'US')
+    };
 
-
-
-    console.log('🔧 Contentstack config:', {
-  apiKey: stackConfig.apiKey ? stackConfig.apiKey.substring(0, 8) + '...' : 'missing',
-  deliveryToken: stackConfig.deliveryToken ? stackConfig.deliveryToken.substring(0, 8) + '...' : 'missing',
-  environment: stackConfig.environment,
-  region: process.env.CONTENTSTACK_REGION || 'US'
-});
+    console.log('Contentstack config:', {
+      apiKey: stackConfig.apiKey ? stackConfig.apiKey.substring(0, 8) + '...' : 'missing',
+      deliveryToken: stackConfig.deliveryToken ? stackConfig.deliveryToken.substring(0, 8) + '...' : 'missing',
+      environment: stackConfig.environment,
+      region: process.env.CONTENTSTACK_REGION || 'US'
+    });
 
     const Stack = contentstack.stack(stackConfig);
-
-    console.log('✅ Contentstack Stack initialized successfully');
+    console.log('Contentstack Stack initialized successfully');
     return Stack;
   } catch (error) {
-    console.error('❌ Failed to initialize Contentstack:', error.message);
+    console.error('Failed to initialize Contentstack:', error.message);
     return null;
   }
 };
 
 const Stack = initializeContentstack();
 
-
 const app = express();
 
-// Middleware - Updated CORS for Vercel
+// Middleware
 app.use(cors({
   origin: [
     'http://localhost:5173', 
@@ -126,23 +120,18 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// HELPER FUNCTIONS - MOVED TO GLOBAL SCOPE
-
-// Force image URLs to use https
+// Helper Functions
 function ensureHttpsUrl(url) {
   if (!url) return null;
-  try {
-    let u = new URL(url, "https://dummy-base.com"); // handles relative
-    if (u.protocol !== "https:") {
-      u.protocol = "https:";
-    }
-    return u.toString();
-  } catch {
-    return url;
+  if (url.startsWith('http://')) {
+    return url.replace('http://', 'https://');
   }
+  if (url.startsWith('//')) {
+    return `https:${url}`;
+  }
+  return url;
 }
 
-// Helper function to check if URL is an image
 function isImageUrl(url) {
   if (!url) return false;
   const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'];
@@ -152,46 +141,26 @@ function isImageUrl(url) {
          urlLower.includes('image');
 }
 
-// Helper functions for image extraction and analysis
 function extractImageUrls(entry) {
   const images = [];
   
-  // Common image field names including your specific field names
   const imageFields = [
     'image', 'featured_image', 'banner_image', 'thumbnail', 'photo', 'picture', 'media',
     'product_image', 'media_file', 'asset', 'file'
   ];
   
-  // Debug: Log what we find in each field
   imageFields.forEach(field => {
-    if (entry.hasOwnProperty(field)) {
-      console.log(`      DEBUG: Field '${field}' exists with value:`, JSON.stringify(entry[field], null, 2));
-      
-      if (entry[field]) {
-        if (typeof entry[field] === 'string' && entry[field].includes('contentstack.com')) {
-          console.log(`      DEBUG: Found direct URL in ${field}: ${entry[field]}`);
-          images.push(ensureHttpsUrl(entry[field]));
-        } else if (entry[field].url) {
-          console.log(`      DEBUG: Found URL property in ${field}: ${entry[field].url}`);
-          // Only include if it's an image file, not PDF or other documents
-          if (isImageUrl(entry[field].url)) {
-            images.push(ensureHttpsUrl(entry[field].url));
-          }
-        } else if (typeof entry[field] === 'object') {
-          console.log(`      DEBUG: ${field} is an object, checking for nested URLs...`);
-          // Check for nested URL structures
-          if (entry[field].href && isImageUrl(entry[field].href)) {
-            console.log(`      DEBUG: Found href in ${field}: ${entry[field].href}`);
-            images.push(ensureHttpsUrl(entry[field].href));
-          }
-        }
-      } else {
-        console.log(`      DEBUG: Field '${field}' is null or empty`);
+    if (entry.hasOwnProperty(field) && entry[field]) {
+      if (typeof entry[field] === 'string' && entry[field].includes('contentstack.com')) {
+        images.push(ensureHttpsUrl(entry[field]));
+      } else if (entry[field].url && isImageUrl(entry[field].url)) {
+        images.push(ensureHttpsUrl(entry[field].url));
+      } else if (typeof entry[field] === 'object' && entry[field].href && isImageUrl(entry[field].href)) {
+        images.push(ensureHttpsUrl(entry[field].href));
       }
     }
   });
 
-  // Handle image arrays
   if (entry.images && Array.isArray(entry.images)) {
     entry.images.forEach(img => {
       if (typeof img === 'string' && img.includes('contentstack.com') && isImageUrl(img)) {
@@ -202,7 +171,6 @@ function extractImageUrls(entry) {
     });
   }
 
-  // Handle gallery or media arrays
   if (entry.gallery && Array.isArray(entry.gallery)) {
     entry.gallery.forEach(item => {
       if (item && item.url && isImageUrl(item.url)) {
@@ -211,66 +179,126 @@ function extractImageUrls(entry) {
     });
   }
 
-  return [...new Set(images)]; // Remove duplicates
+  return [...new Set(images)];
 }
 
-function analyzeImageFields(entry) {
-  const analysis = {};
-  const allFields = Object.keys(entry).filter(key => !key.startsWith('_'));
-  
-  allFields.forEach(fieldName => {
-    const value = entry[fieldName];
-    
-    if (value && typeof value === 'object') {
-      // Check if it looks like a Contentstack asset
-      if (value.url || value.href || value.filename) {
-        analysis[fieldName] = {
-          type: 'potential_asset',
-          hasUrl: !!value.url,
-          hasHref: !!value.href,
-          hasFilename: !!value.filename,
-          structure: Object.keys(value)
-        };
-      }
-    }
-    
-    if (Array.isArray(value)) {
-      const hasAssets = value.some(item => 
-        item && typeof item === 'object' && (item.url || item.href || item.filename)
-      );
+async function analyzeImageWithAI(imageUrl, maxRetries = 3) {
+  if (!openai) return null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`    Analyzing image (attempt ${attempt}): ${imageUrl.substring(0, 80)}...`);
       
-      if (hasAssets) {
-        analysis[fieldName] = {
-          type: 'asset_array',
-          length: value.length,
-          sampleStructure: value.length > 0 ? Object.keys(value[0] || {}) : []
-        };
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Analyze this image and describe what you see. Focus on: colors, objects, text, patterns, materials, style, and any distinctive visual features. Keep the description concise but comprehensive for search purposes."
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: imageUrl,
+                  detail: "low"
+                }
+              }
+            ]
+          }
+        ],
+        max_tokens: 200,
+        temperature: 0.3
+      });
+
+      const analysis = response.choices[0]?.message?.content;
+      if (analysis) {
+        console.log(`    Image analysis successful: ${analysis.substring(0, 100)}...`);
+        return analysis;
       }
+
+    } catch (error) {
+      console.error(`    Image analysis attempt ${attempt} failed:`, error.message);
+      
+      if (attempt === maxRetries) {
+        if (error.message.includes('rate limit')) {
+          console.log('    Rate limit hit, waiting 2 seconds before continuing...');
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        } else if (error.message.includes('unsupported image type')) {
+          console.log('    Image type not supported, skipping analysis...');
+        }
+        return null;
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 1500));
     }
-    
-    if (typeof value === 'string' && value.includes('contentstack.com')) {
-      analysis[fieldName] = {
-        type: 'direct_url',
-        url: value
-      };
+  }
+  
+  return null;
+}
+
+function extractTextContent(entry) {
+  const textFields = [];
+  
+  if (entry.title) textFields.push(entry.title);
+  if (entry.description) textFields.push(entry.description);
+  if (entry.body) textFields.push(entry.body);
+  if (entry.content) textFields.push(entry.content);
+  if (entry.summary) textFields.push(entry.summary);
+  
+  const additionalFields = ['excerpt', 'overview', 'introduction', 'subtitle', 'text'];
+  additionalFields.forEach(field => {
+    if (entry[field] && typeof entry[field] === 'string') {
+      textFields.push(entry[field]);
     }
   });
   
-  return analysis;
+  if (entry.rich_text_editor && typeof entry.rich_text_editor === 'object') {
+    if (entry.rich_text_editor.children) {
+      const richText = extractFromRichTextEditor(entry.rich_text_editor.children);
+      if (richText) textFields.push(richText);
+    }
+  }
+  
+  return textFields.join(' ').substring(0, 8000);
 }
 
-// Helper function to detect visual search queries
+function extractFromRichTextEditor(children) {
+  if (!Array.isArray(children)) return '';
+  
+  let text = '';
+  children.forEach(child => {
+    if (child.text) {
+      text += child.text + ' ';
+    } else if (child.children) {
+      text += extractFromRichTextEditor(child.children) + ' ';
+    }
+  });
+  
+  return text.trim();
+}
+
+function cleanTextContent(text) {
+  if (!text) return '';
+  
+  return text
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/[#*_`]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function isVisualQuery(query) {
   const visualKeywords = [
-    // Colors
     'red', 'blue', 'green', 'yellow', 'black', 'white', 'brown', 'pink', 'purple', 'orange', 'gray', 'grey',
     'silver', 'gold', 'navy', 'maroon', 'crimson', 'scarlet', 'burgundy',
-    // Visual descriptors
     'color', 'colored', 'bright', 'dark', 'light',
     'stripe', 'striped', 'pattern', 'design', 'logo', 'symbol',
     'round', 'square', 'circular', 'rectangular',
     'texture', 'material', 'fabric', 'leather', 'metal',
-    // Objects
     'shoe', 'shoes', 'sneaker', 'sneakers', 'boot', 'boots',
     'container', 'bottle', 'packaging', 'box',
     'clothing', 'shirt', 'dress', 'pants', 'jacket',
@@ -287,14 +315,12 @@ function isVisualQuery(query) {
   };
 }
 
-// Helper function to extract image information from results
 function processImageData(results) {
   let multimodalResultsCount = 0;
   let analyzedImageCount = 0;
   let totalImagesFound = 0;
 
   results.forEach(result => {
-    // Check for primary image
     if (result.metadata?.primary_image || result.metadata?.primaryImage) {
       result.hasImages = true;
       result.primaryImage = result.metadata.primary_image || result.metadata.primaryImage;
@@ -302,7 +328,6 @@ function processImageData(results) {
       totalImagesFound++;
     }
 
-    // Check for all images
     if (result.metadata?.all_images || result.metadata?.allImages) {
       const allImages = result.metadata.all_images || result.metadata.allImages;
       if (Array.isArray(allImages) && allImages.length > 0) {
@@ -318,13 +343,11 @@ function processImageData(results) {
       }
     }
 
-    // Check for image analysis data
     if (result.metadata?.image_analysis || result.metadata?.imageAnalysis) {
       result.imageAnalyzed = true;
       analyzedImageCount++;
     }
 
-    // Check for visual query match
     if (result.metadata?.visual_match || result.metadata?.visualMatch) {
       result.visualQueryMatch = true;
     }
@@ -338,12 +361,12 @@ function processImageData(results) {
   };
 }
 
-// WEBHOOK AUTHENTICATION MIDDLEWARE
+// Webhook authentication middleware
 const authenticateWebhook = (req, res, next) => {
   const authHeader = req.headers.authorization;
   
   if (!authHeader || !authHeader.startsWith('Basic ')) {
-    console.log('❌ Webhook authentication failed: No basic auth header');
+    console.log('Webhook authentication failed: No basic auth header');
     return res.status(401).json({ error: 'Authentication required' });
   }
 
@@ -351,213 +374,170 @@ const authenticateWebhook = (req, res, next) => {
     const credentials = Buffer.from(authHeader.split(' ')[1], 'base64').toString('utf-8');
     const [username, password] = credentials.split(':');
 
-    // Use the same credentials you set in Contentstack webhook configuration
     const expectedUsername = process.env.WEBHOOK_USERNAME || 'contentstack_webhook';
     const expectedPassword = process.env.WEBHOOK_PASSWORD || 'your-secure-password';
 
     if (username !== expectedUsername || password !== expectedPassword) {
-      console.log('❌ Webhook authentication failed: Invalid credentials');
+      console.log('Webhook authentication failed: Invalid credentials');
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    console.log('✅ Webhook authentication successful');
+    console.log('Webhook authentication successful');
     next();
   } catch (error) {
-    console.log('❌ Webhook authentication error:', error.message);
+    console.log('Webhook authentication error:', error.message);
     return res.status(401).json({ error: 'Authentication failed' });
   }
 };
 
-// HELPER FUNCTIONS FOR CONTENT EXTRACTION
-function extractContentFromEntry(entryData, contentType) {
-  let content = '';
-  
-  // Extract title
-  if (entryData.title) {
-    content += entryData.title + ' ';
-  }
-  
-  // Extract description/summary
-  if (entryData.description) {
-    content += entryData.description + ' ';
-  }
-  if (entryData.summary) {
-    content += entryData.summary + ' ';
-  }
-  
-  // Extract rich text content
-  if (entryData.content) {
-    if (typeof entryData.content === 'string') {
-      content += entryData.content + ' ';
-    } else if (entryData.content.children) {
-      // Handle rich text editor content
-      content += extractRichTextContent(entryData.content) + ' ';
+// Enhanced reindex function with image analysis
+async function reindexEntryWithImageAnalysis(entryData, contentType, locale, index) {
+  try {
+    console.log(`Processing entry with image analysis: ${entryData.uid}`);
+
+    const rawText = extractTextContent(entryData);
+    const cleanText = cleanTextContent(rawText);
+    
+    if (!cleanText || cleanText.length < 10) {
+      console.log(`Skipping entry ${entryData.uid}: insufficient content (${cleanText.length} chars)`);
+      return;
     }
-  }
-  
-  // Extract body content
-  if (entryData.body) {
-    if (typeof entryData.body === 'string') {
-      content += entryData.body + ' ';
-    } else if (entryData.body.children) {
-      content += extractRichTextContent(entryData.body) + ' ';
+
+    const imageUrls = extractImageUrls(entryData);
+    console.log(`Found ${imageUrls.length} images for ${entryData.uid}`);
+    if (imageUrls.length > 0) {
+      console.log('Image URLs:', imageUrls);
     }
+
+    let imageAnalysis = null;
+    let combinedContent = cleanText;
+
+    if (imageUrls.length > 0 && openai) {
+      try {
+        console.log(`Analyzing primary image for ${entryData.uid}...`);
+        const primaryImageAnalysis = await analyzeImageWithAI(imageUrls[0]);
+        if (primaryImageAnalysis) {
+          imageAnalysis = primaryImageAnalysis;
+          combinedContent = `${cleanText} Image description: ${primaryImageAnalysis}`;
+          console.log(`Image analysis completed for ${entryData.uid}`);
+        } else {
+          console.log(`Image analysis failed or skipped for ${entryData.uid}`);
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } catch (imageError) {
+        console.error(`Image analysis failed for ${entryData.uid}:`, imageError.message);
+      }
+    }
+
+    console.log(`Generating embedding for: ${entryData.title || entryData.uid}`);
+    const embedResponse = await cohere.embed({ 
+      model: "embed-english-light-v3.0",
+      texts: [combinedContent],
+      inputType: "search_document"
+    });
+    
+    let vector;
+    if (embedResponse?.embeddings?.[0]) {
+      vector = embedResponse.embeddings[0];
+    } else if (embedResponse?.body?.embeddings?.[0]) {
+      vector = embedResponse.body.embeddings[0];
+    }
+    
+    if (!vector || !Array.isArray(vector)) {
+      throw new Error(`Failed to generate embedding for entry ${entryData.uid}`);
+    }
+
+    let tags = [];
+    if (entryData.tags) {
+      if (Array.isArray(entryData.tags)) {
+        tags = entryData.tags.map(tag => {
+          if (typeof tag === 'object' && tag !== null) {
+            return tag.name || tag.title || tag.uid || String(tag);
+          }
+          return String(tag);
+        }).filter(tag => tag && tag.length > 0);
+      } else if (typeof entryData.tags === 'string') {
+        tags = entryData.tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
+      }
+    }
+
+    const metadata = {
+      title: entryData.title || 'Untitled',
+      type: contentType,
+      snippet: cleanText.substring(0, 500),
+      locale: locale || 'en-us',
+      tags: tags,
+      date: entryData.updated_at || entryData.created_at || new Date().toISOString(),
+      content_type_uid: entryData._content_type_uid || contentType,
+      uid: entryData.uid,
+      url: entryData.url || '',
+      primary_image: imageUrls[0] || null,
+      all_images: imageUrls.length > 0 ? imageUrls : null,
+      image_count: imageUrls.length,
+      has_images: imageUrls.length > 0,
+      image_analysis: imageAnalysis || null,
+      category: entryData.category || null,
+      price: entryData.price || null,
+      duration: entryData.duration || null,
+      visual_match: imageAnalysis ? true : false,
+      multimodal_content: imageAnalysis ? true : false
+    };
+
+    Object.keys(metadata).forEach(key => {
+      if (metadata[key] === null || metadata[key] === undefined) {
+        delete metadata[key];
+      }
+    });
+
+    const vectorId = `${entryData.uid}_${locale}`;
+    await index.upsert([{
+      id: vectorId,
+      values: vector,
+      metadata: metadata
+    }]);
+
+    console.log(`Successfully reindexed entry with image analysis: ${entryData.uid} (${vectorId})`);
+
+  } catch (error) {
+    console.error(`Failed to reindex entry ${entryData.uid}:`, error.message);
+    throw error;
   }
-  
-  // Extract tags
-  if (entryData.tags && Array.isArray(entryData.tags)) {
-    content += entryData.tags.join(' ') + ' ';
-  }
-  
-  // Extract category
-  if (entryData.category) {
-    content += entryData.category + ' ';
-  }
-  
-  return content.trim();
 }
 
-function extractRichTextContent(richTextObj) {
-  if (!richTextObj || !richTextObj.children) return '';
-  
-  let text = '';
-  
-  function traverse(node) {
-    if (node.text) {
-      text += node.text + ' ';
-    }
-    if (node.children && Array.isArray(node.children)) {
-      node.children.forEach(traverse);
-    }
-  }
-  
-  richTextObj.children.forEach(traverse);
-  return text.trim();
-}
-
-// WEBHOOK HANDLER FUNCTIONS
+// Webhook handler functions
 async function handleEntryPublish(entryData, contentType, locale, index) {
-  console.log(`📤 Publishing entry: ${entryData.uid}`);
-  await reindexEntry(entryData, contentType, locale, index);
+  console.log(`Publishing entry: ${entryData.uid}`);
+  await reindexEntryWithImageAnalysis(entryData, contentType, locale, index);
 }
 
 async function handleEntryUpdate(entryData, contentType, locale, index) {
-  console.log(`📝 Updating entry: ${entryData.uid}`);
-  await reindexEntry(entryData, contentType, locale, index);
+  console.log(`Updating entry: ${entryData.uid}`);
+  await reindexEntryWithImageAnalysis(entryData, contentType, locale, index);
 }
 
 async function handleEntryUnpublish(entryUid, contentType, locale, index) {
-  console.log(`📥 Unpublishing entry: ${entryUid}`);
+  console.log(`Unpublishing entry: ${entryUid}`);
   await removeFromIndex(entryUid, contentType, locale, index);
 }
 
 async function handleEntryDelete(entryUid, contentType, locale, index) {
-  console.log(`🗑️ Deleting entry: ${entryUid}`);
+  console.log(`Deleting entry: ${entryUid}`);
   await removeFromIndex(entryUid, contentType, locale, index);
 }
 
-// Enhanced reindex function
-async function reindexEntry(entryData, contentType, locale, index) {
-  try {
-    // Extract content for embedding
-    const content = extractContentFromEntry(entryData, contentType);
-    
-    if (!content || content.trim().length === 0) {
-      console.log(`⚠️ No content to index for entry ${entryData.uid}`);
-      return;
-    }
-
-    console.log(`🤖 Generating embedding for: ${entryData.title || entryData.uid}`);
-
-    // Generate embedding using Cohere
-    const embedResponse = await cohere.embed({
-      model: "embed-english-light-v3.0",
-      texts: [content.trim()],
-      inputType: "search_document"
-    });
-
-    let embedding;
-    if (embedResponse?.embeddings?.[0]) {
-      embedding = embedResponse.embeddings[0];
-    } else if (embedResponse?.body?.embeddings?.[0]) {
-      embedding = embedResponse.body.embeddings[0];
-    } else {
-      throw new Error("Failed to get embeddings from Cohere");
-    }
-
-    // Extract images
-    const images = extractImageUrls(entryData);
-    console.log(`🖼️ Found ${images.length} images for entry ${entryData.uid}`);
-    if (images.length > 0) {
-      console.log(`   Image URLs:`, images);
-    }
-    
-    // Prepare metadata
-    const metadata = {
-      id: entryData.uid,
-      type: contentType,
-      content_type_uid: contentType,
-      title: entryData.title || entryData.name || 'Untitled',
-      snippet: content.substring(0, 300) + (content.length > 300 ? '...' : ''),
-      locale: locale,
-      date: entryData.updated_at || entryData.created_at || new Date().toISOString(),
-      updated_at: entryData.updated_at || new Date().toISOString(),
-      url: entryData.url || `#${entryData.uid}`,
-      tags: Array.isArray(entryData.tags) ? entryData.tags : 
-            (typeof entryData.tags === 'string' ? entryData.tags.split(',').map(t => t.trim()) : []),
-      category: entryData.category || contentType
-    };
-
-    // Add enhanced image metadata if images exist
-    if (images.length > 0) {
-      metadata.primary_image = images[0];
-      metadata.all_images = images;
-      metadata.image_count = images.length;
-      metadata.has_images = true;
-      console.log(`   ✅ Added image metadata: primary=${images[0].substring(0, 50)}...`);
-    } else {
-      console.log(`   ⚠️ No images found for entry ${entryData.uid}`);
-    }
-
-    // Add additional fields that might be useful for search
-    if (entryData.price) metadata.price = entryData.price;
-    if (entryData.duration) metadata.duration = entryData.duration;
-    if (entryData.author) metadata.author = entryData.author;
-
-    // Enhanced flags for better search functionality
-    metadata.visual_match = images.length > 0 ? true : false;
-    metadata.multimodal_content = images.length > 0 ? true : false;
-
-    // Update in Pinecone
-    const vectorId = `${entryData.uid}_${locale}`;
-    await index.upsert([{
-      id: vectorId,
-      values: embedding,
-      metadata: metadata
-    }]);
-
-    console.log(`✅ Successfully reindexed entry: ${entryData.uid} (${vectorId})`);
-  } catch (error) {
-    console.error(`❌ Failed to reindex entry ${entryData.uid}:`, error);
-    throw error;
-  }
-}
-
-// Helper function to remove entry from index
 async function removeFromIndex(entryUid, contentType, locale, index) {
   try {
-    // Remove specific locale version
     const vectorId = `${entryUid}_${locale}`;
     await index.deleteOne(vectorId);
-    
-    console.log(`✅ Successfully removed entry from index: ${vectorId}`);
+    console.log(`Successfully removed entry from index: ${vectorId}`);
   } catch (error) {
-    console.error(`❌ Failed to remove entry ${entryUid} from index:`, error);
+    console.error(`Failed to remove entry ${entryUid} from index:`, error.message);
     throw error;
   }
 }
 
-// Health check endpoint
+// API Endpoints
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'OK', 
@@ -568,74 +548,14 @@ app.get('/health', (req, res) => {
       image_analysis: !!openai,
       multimodal_search: true,
       webhook_integration: true,
-      contentstack_connected: !!Stack
+      contentstack_connected: !!Stack,
+      real_time_image_processing: !!openai
     }
   });
 });
 
-// Debug endpoint for Contentstack data inspection
-app.get('/debug-contentstack/:contentType/:entryId?', async (req, res) => {
-  try {
-    if (!Stack) {
-      return res.status(503).json({
-        error: 'Contentstack not configured',
-        details: 'Please set CONTENTSTACK_API_KEY and CONTENTSTACK_DELIVERY_TOKEN environment variables'
-      });
-    }
-
-    const { contentType, entryId } = req.params;
-    
-    if (entryId) {
-      // Fetch specific entry
-      const entry = await Stack.ContentType(contentType).Entry(entryId).toJSON().fetch();
-      res.json({
-        status: 'success',
-        contentType,
-        entryId,
-        entry: entry,
-        extractedImages: extractImageUrls(entry),
-        allFields: Object.keys(entry).filter(key => !key.startsWith('_')),
-        imageFieldAnalysis: analyzeImageFields(entry)
-      });
-    } else {
-      // Fetch first few entries
-      const query = Stack.ContentType(contentType).Query().limit(3);
-      const result = await query.toJSON().find();
-      
-      let entries = [];
-      if (result && Array.isArray(result)) {
-        entries = Array.isArray(result[0]) ? result[0] : result;
-      } else if (result && result.entries) {
-        entries = result.entries;
-      }
-      
-      const analysis = entries.map(entry => ({
-        uid: entry.uid,
-        title: entry.title,
-        extractedImages: extractImageUrls(entry),
-        allFields: Object.keys(entry).filter(key => !key.startsWith('_')),
-        imageFieldAnalysis: analyzeImageFields(entry)
-      }));
-      
-      res.json({
-        status: 'success',
-        contentType,
-        totalEntries: entries.length,
-        analysis
-      });
-    }
-  } catch (error) {
-    console.error('Debug endpoint error:', error);
-    res.status(500).json({
-      error: 'Debug failed',
-      details: error.message
-    });
-  }
-});
-
-// Enhanced Semantic Search Endpoint with Image Analysis
 app.post("/search", async (req, res) => {
-  console.log('🔍 Search request received:', req.body);
+  console.log('Search request received:', req.body);
   
   try {
     const { query, contentTypes = [], locales = [] } = req.body;
@@ -647,16 +567,12 @@ app.post("/search", async (req, res) => {
       });
     }
 
-    console.log(`📝 Processing query: "${query}"`);
-    console.log(`🎯 Content types filter: ${contentTypes}`);
-    console.log(`🌍 Locales filter: ${locales}`);
+    console.log(`Processing query: "${query}"`);
 
-    // Detect if this is a visual query
     const visualAnalysis = isVisualQuery(query);
-    console.log(`👁️ Visual query analysis:`, visualAnalysis);
+    console.log('Visual query analysis:', visualAnalysis);
 
-    // Generate embedding for query using Cohere
-    console.log('🤖 Generating embeddings with Cohere...');
+    console.log('Generating embeddings with Cohere...');
     const embedResponse = await cohere.embed({
       model: "embed-english-light-v3.0",
       texts: [query.trim()],
@@ -665,13 +581,12 @@ app.post("/search", async (req, res) => {
 
     let queryVector;
     
-    // Handle different response structures
     if (embedResponse?.embeddings?.[0]) {
       queryVector = embedResponse.embeddings[0];
     } else if (embedResponse?.body?.embeddings?.[0]) {
       queryVector = embedResponse.body.embeddings[0];
     } else {
-      console.error('❌ Cohere embedding response:', embedResponse);
+      console.error('Cohere embedding response:', embedResponse);
       throw new Error("Failed to get embeddings from Cohere");
     }
 
@@ -679,10 +594,9 @@ app.post("/search", async (req, res) => {
       throw new Error("Invalid vector format from Cohere");
     }
 
-    console.log(`✅ Generated vector with dimension: ${queryVector.length}`);
+    console.log(`Generated vector with dimension: ${queryVector.length}`);
 
-    // Query Pinecone index
-    console.log('🔍 Querying Pinecone index...');
+    console.log('Querying Pinecone index...');
     const index = pinecone.Index(process.env.PINECONE_INDEX);
     
     const queryOptions = {
@@ -691,7 +605,6 @@ app.post("/search", async (req, res) => {
       includeMetadata: true,
     };
 
-    // Add filtering if specified
     if (contentTypes.length > 0 || locales.length > 0) {
       queryOptions.filter = {};
       
@@ -704,13 +617,9 @@ app.post("/search", async (req, res) => {
       }
     }
 
-    console.log('📊 Query options:', JSON.stringify(queryOptions, null, 2));
-
     const searchResult = await index.query(queryOptions);
-    
-    console.log(`🎯 Pinecone returned ${searchResult.matches?.length || 0} matches`);
+    console.log(`Pinecone returned ${searchResult.matches?.length || 0} matches`);
 
-    // Process and return results
     const results = (searchResult.matches || []).map((item, index) => {
       const metadata = item.metadata || {};
       
@@ -730,8 +639,6 @@ app.post("/search", async (req, res) => {
         url: metadata.url || '',
         contentTypeUid: metadata.content_type_uid || metadata.type,
         originalScore: item.score,
-        
-        // Image-related fields
         primary_image: metadata.primary_image,
         primaryImage: metadata.primary_image,
         all_images: metadata.all_images,
@@ -740,21 +647,15 @@ app.post("/search", async (req, res) => {
         imageAnalysis: metadata.image_analysis,
         visual_match: metadata.visual_match,
         visualMatch: metadata.visual_match,
-        
-        // Additional metadata
         category: metadata.category,
         price: metadata.price,
         duration: metadata.duration
       };
     });
 
-    // Sort results by relevance
     const sortedResults = results.sort((a, b) => b.relevance - a.relevance);
-
-    // Process image data and get statistics
     const imageStats = processImageData(sortedResults);
 
-    // Create search context
     const searchContext = {
       isVisualQuery: visualAnalysis.isVisual,
       visualConfidence: visualAnalysis.confidence,
@@ -762,16 +663,7 @@ app.post("/search", async (req, res) => {
       ...imageStats
     };
 
-    console.log(`✅ Returning ${sortedResults.length} processed results`);
-    console.log(`📊 Image statistics:`, imageStats);
-    
-    // Log final processed scores
-    if (sortedResults.length > 0) {
-      console.log('🏆 Final sorted scores (first 5):');
-      sortedResults.slice(0, 5).forEach((result, idx) => {
-        console.log(`   ${idx + 1}. ${result.title}: ${(result.relevance * 100).toFixed(1)}% (orig: ${result.originalScore?.toFixed(4)})`);
-      });
-    }
+    console.log(`Returning ${sortedResults.length} processed results`);
 
     res.json({ 
       results: sortedResults,
@@ -786,9 +678,8 @@ app.post("/search", async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Search error:', error);
+    console.error('Search error:', error);
     
-    // Provide more specific error messages
     let errorMessage = 'Search failed';
     let statusCode = 500;
     
@@ -798,9 +689,6 @@ app.post("/search", async (req, res) => {
     } else if (error.message.includes('Pinecone')) {
       errorMessage = 'Failed to search vector database. Please check your Pinecone configuration.';
       statusCode = 503;
-    } else if (error.message.includes('Index')) {
-      errorMessage = 'Vector database index not found. Please check your Pinecone index name.';
-      statusCode = 404;
     }
 
     res.status(statusCode).json({ 
@@ -811,7 +699,6 @@ app.post("/search", async (req, res) => {
   }
 });
 
-// Image analysis endpoint with updated model
 app.post("/analyze-image", async (req, res) => {
   if (!openai) {
     return res.status(503).json({
@@ -826,10 +713,10 @@ app.post("/analyze-image", async (req, res) => {
       return res.status(400).json({ error: "Image URL is required" });
     }
 
-    console.log(`🖼️ Analyzing image: ${imageUrl}`);
+    console.log(`Analyzing image: ${imageUrl}`);
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini", // Updated to current model
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "user",
@@ -862,7 +749,7 @@ app.post("/analyze-image", async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Image analysis error:', error);
+    console.error('Image analysis error:', error);
     res.status(500).json({
       error: "Image analysis failed",
       details: error.message
@@ -870,288 +757,20 @@ app.post("/analyze-image", async (req, res) => {
   }
 });
 
-// Test endpoint to check if any data exists in Pinecone
-app.get('/test-data', async (req, res) => {
-  try {
-    const index = pinecone.Index(process.env.PINECONE_INDEX);
-    const stats = await index.describeIndexStats();
-    
-    res.json({
-      status: 'success',
-      indexStats: stats,
-      hasData: stats.totalVectorCount > 0
-    });
-  } catch (error) {
-    console.error('❌ Test data error:', error);
-    res.status(500).json({
-      error: 'Failed to check index stats',
-      details: error.message
-    });
-  }
-});
-
-// Debug endpoint to see sample vectors in the index
-app.get('/debug-vectors', async (req, res) => {
-  try {
-    const index = pinecone.Index(process.env.PINECONE_INDEX);
-    
-    // Query with a zero vector to get any results (for debugging)
-    const debugQuery = await index.query({
-      vector: new Array(384).fill(0), // 384-dimension embeddings for Cohere light model
-      topK: 10,
-      includeMetadata: true,
-    });
-    
-    const debugResults = debugQuery.matches?.map(match => ({
-      id: match.id,
-      title: match.metadata?.title,
-      type: match.metadata?.type,
-      score: match.score,
-      hasImages: !!(match.metadata?.primary_image || match.metadata?.all_images)
-    })) || [];
-    
-    res.json({
-      status: 'success',
-      sampleVectors: debugResults,
-      totalFound: debugResults.length
-    });
-    
-  } catch (error) {
-    console.error('❌ Debug vectors error:', error);
-    res.status(500).json({
-      error: 'Failed to debug vectors',
-      details: error.message
-    });
-  }
-});
-
-// Dynamic Contentstack connection endpoint
-app.post('/connect-contentstack', async (req, res) => {
-  try {
-    const { apiKey, deliveryToken, managementToken, region = 'US', environment = 'production' } = req.body;
-    
-    if (!apiKey || !deliveryToken) {
-      return res.status(400).json({
-        error: 'API key and delivery token are required'
-      });
-    }
-
-    // Create a new Contentstack stack instance with provided credentials
-    const tempStack = contentstack.Stack({
-      api_key: apiKey,
-      delivery_token: deliveryToken,
-      environment: environment,
-      region: getContentstackRegion(region)
-    });
-
-    // Test the connection by fetching content types
-    try {
-      const contentTypes = await tempStack.getContentTypes();
-      
-      res.json({
-        success: true,
-        message: 'Successfully connected to Contentstack',
-        contentTypes: contentTypes.content_types?.map(ct => ({
-          uid: ct.uid,
-          title: ct.title,
-          description: ct.description
-        })) || [],
-        stack: {
-          apiKey: apiKey.substring(0, 8) + '...',
-          environment,
-          region
-        }
-      });
-    } catch (connectionError) {
-      console.error('Contentstack connection test failed:', connectionError);
-      res.status(401).json({
-        error: 'Failed to connect to Contentstack',
-        details: connectionError.message
-      });
-    }
-
-  } catch (error) {
-    console.error('❌ Connect Contentstack error:', error);
-    res.status(500).json({
-      error: 'Connection failed',
-      details: error.message
-    });
-  }
-});
-
-// Fetch entries from Contentstack with dynamic credentials
-app.post('/fetch-entries', async (req, res) => {
-  try {
-    const { 
-      apiKey, 
-      deliveryToken, 
-      contentType = 'article', 
-      region = 'US', 
-      environment = 'production',
-      limit = 10 
-    } = req.body;
-    
-    if (!apiKey || !deliveryToken) {
-      return res.status(400).json({
-        error: 'API key and delivery token are required'
-      });
-    }
-
-    // Create a new Contentstack stack instance
-    const tempStack = contentstack.Stack({
-      api_key: apiKey,
-      delivery_token: deliveryToken,
-      environment: environment,
-      region: getContentstackRegion(region)
-    });
-
-    // Fetch entries
-    const query = tempStack.ContentType(contentType).Query().limit(limit);
-    const result = await query.toJSON().find();
-    
-    let entries = [];
-    if (result && Array.isArray(result)) {
-      entries = Array.isArray(result[0]) ? result[0] : result;
-    } else if (result && result.entries) {
-      entries = result.entries;
-    }
-
-    res.json({
-      success: true,
-      entries: entries.map(entry => ({
-        uid: entry.uid,
-        title: entry.title || 'Untitled',
-        content: entry.content ? 
-          (typeof entry.content === 'string' ? entry.content.substring(0, 200) + '...' : 'Rich content') :
-          'No content',
-        updated_at: entry.updated_at,
-        created_at: entry.created_at,
-        locale: entry.locale || 'en-us',
-        tags: entry.tags || [],
-        url: entry.url
-      })),
-      totalEntries: entries.length,
-      contentType,
-      environment,
-      region
-    });
-
-  } catch (error) {
-    console.error('❌ Fetch entries error:', error);
-    res.status(500).json({
-      error: 'Failed to fetch entries',
-      details: error.message
-    });
-  }
-});
-
-// Sync entries to search backend
-app.post('/sync-entries', async (req, res) => {
-  try {
-    const { 
-      apiKey, 
-      deliveryToken, 
-      contentTypes = ['article'], 
-      region = 'US', 
-      environment = 'production',
-      limit = 50
-    } = req.body;
-    
-    if (!apiKey || !deliveryToken) {
-      return res.status(400).json({
-        error: 'API key and delivery token are required'
-      });
-    }
-
-    // Create a new Contentstack stack instance
-    const tempStack = contentstack.Stack({
-      api_key: apiKey,
-      delivery_token: deliveryToken,
-      environment: environment,
-      region: getContentstackRegion(region)
-    });
-
-    const index = pinecone.Index(process.env.PINECONE_INDEX);
-    let totalSynced = 0;
-    let errors = [];
-
-    for (const contentType of contentTypes) {
-      try {
-        console.log(`📥 Syncing content type: ${contentType}`);
-        
-        // Fetch entries
-        const query = tempStack.ContentType(contentType).Query().limit(limit);
-        const result = await query.toJSON().find();
-        
-        let entries = [];
-        if (result && Array.isArray(result)) {
-          entries = Array.isArray(result[0]) ? result[0] : result;
-        } else if (result && result.entries) {
-          entries = result.entries;
-        }
-
-        console.log(`📄 Found ${entries.length} entries for ${contentType}`);
-
-        for (const entry of entries) {
-          try {
-            await reindexEntry(entry, contentType, entry.locale || 'en-us', index);
-            totalSynced++;
-          } catch (entryError) {
-            console.error(`❌ Failed to sync entry ${entry.uid}:`, entryError.message);
-            errors.push({
-              entryUid: entry.uid,
-              contentType,
-              error: entryError.message
-            });
-          }
-        }
-
-      } catch (contentTypeError) {
-        console.error(`❌ Failed to sync content type ${contentType}:`, contentTypeError.message);
-        errors.push({
-          contentType,
-          error: contentTypeError.message
-        });
-      }
-    }
-
-    res.json({
-      success: true,
-      message: `Sync completed. ${totalSynced} entries synced.`,
-      totalSynced,
-      contentTypes,
-      errors: errors.slice(0, 10), // Limit error details
-      timestamp: new Date().toISOString()
-    });
-
-  } catch (error) {
-    console.error('❌ Sync entries error:', error);
-    res.status(500).json({
-      error: 'Sync failed',
-      details: error.message
-    });
-  }
-});
-
-// ===========================================
-// WEBHOOK ENDPOINTS - ENHANCED INTEGRATION
-// ===========================================
-
-// Webhook handler for Contentstack content changes
+// Webhook endpoint
 app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
   try {
-    console.log('🔔 Received Contentstack webhook:', JSON.stringify(req.body, null, 2));
+    console.log('Received Contentstack webhook:', JSON.stringify(req.body, null, 2));
     
     const { event, data, module } = req.body;
     
     if (!event || !data) {
-      console.log('❌ Invalid webhook payload - missing event or data');
+      console.log('Invalid webhook payload - missing event or data');
       return res.status(400).json({ error: 'Invalid webhook payload' });
     }
 
-    // Handle asset events separately
     if (module === 'asset' || (data.asset && data.asset.uid)) {
-      console.log(`📷 Asset event: ${event} for asset ${data.asset?.uid || data.uid}`);
+      console.log(`Asset event: ${event} for asset ${data.asset?.uid || data.uid}`);
       return res.status(200).json({ 
         success: true, 
         message: 'Asset webhook received but not processed',
@@ -1160,23 +779,20 @@ app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
       });
     }
 
-    // Handle different webhook payload structures for entries
     let entryData, contentType, entryUid, locale;
 
     if (module === 'entry' && data.entry) {
-      // Standard entry webhook
       entryData = data.entry;
       contentType = entryData.content_type_uid;
       entryUid = entryData.uid;
       locale = entryData.locale || 'en-us';
     } else if (data.uid && data.content_type_uid) {
-      // Direct entry data
       entryData = data;
       contentType = data.content_type_uid;
       entryUid = data.uid;
       locale = data.locale || 'en-us';
     } else {
-      console.log('❌ Unsupported webhook payload structure:', { 
+      console.log('Unsupported webhook payload structure:', { 
         event, 
         dataKeys: Object.keys(data), 
         module,
@@ -1190,7 +806,7 @@ app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
       });
     }
 
-    console.log(`📝 Processing webhook: ${event} for ${contentType}:${entryUid} (${locale})`);
+    console.log(`Processing webhook with IMAGE ANALYSIS: ${event} for ${contentType}:${entryUid} (${locale})`);
 
     const index = pinecone.Index(process.env.PINECONE_INDEX);
 
@@ -1215,29 +831,29 @@ app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
         await handleEntryDelete(entryUid, contentType, locale, index);
         break;
 
-      // Asset events - acknowledge but don't process
       case 'asset.publish':
       case 'asset.update':
       case 'asset.unpublish':
       case 'asset.delete':
-        console.log(`📷 Asset event handled: ${event}`);
+        console.log(`Asset event handled: ${event}`);
         break;
         
       default:
-        console.log(`⚠️ Unhandled webhook event: ${event}`);
+        console.log(`Unhandled webhook event: ${event}`);
     }
 
     res.status(200).json({ 
       success: true, 
-      message: 'Webhook processed successfully',
+      message: 'Webhook processed successfully with image analysis',
       event,
       entryUid: entryUid || 'asset',
       contentType: contentType || 'asset',
+      imageAnalysisEnabled: !!openai,
       timestamp: new Date().toISOString()
     });
 
   } catch (error) {
-    console.error('❌ Webhook processing error:', error);
+    console.error('Webhook processing error:', error);
     res.status(500).json({ 
       error: 'Webhook processing failed', 
       details: error.message,
@@ -1252,6 +868,7 @@ app.get('/api/webhook/test', (req, res) => {
     status: 'Webhook endpoint is active',
     timestamp: new Date().toISOString(),
     authentication: 'Basic Auth required',
+    imageAnalysisEnabled: !!openai,
     supportedEvents: [
       'entry.publish',
       'entry.update', 
@@ -1267,32 +884,30 @@ app.get('/api/webhook/test', (req, res) => {
   });
 });
 
-// Manual reindex endpoint for specific entries
+// Manual reindex endpoint with image analysis
 app.post('/api/reindex/:contentType/:entryUid', authenticateWebhook, async (req, res) => {
   try {
     const { contentType, entryUid } = req.params;
     const { locale = 'en-us', apiKey, deliveryToken, region = 'US', environment = 'production' } = req.body;
 
-    console.log(`🔄 Manual reindex requested for ${contentType}:${entryUid}`);
+    console.log(`Manual reindex with image analysis requested for ${contentType}:${entryUid}`);
 
-    // Use provided credentials or fall back to environment
     const stackConfig = {
-      api_key: apiKey || process.env.CONTENTSTACK_API_KEY,
-      delivery_token: deliveryToken || process.env.CONTENTSTACK_DELIVERY_TOKEN,
+      apiKey: apiKey || process.env.CONTENTSTACK_API_KEY,
+      deliveryToken: deliveryToken || process.env.CONTENTSTACK_DELIVERY_TOKEN,
       environment: environment,
       region: getContentstackRegion(region)
     };
 
-    if (!stackConfig.api_key || !stackConfig.delivery_token) {
+    if (!stackConfig.apiKey || !stackConfig.deliveryToken) {
       return res.status(400).json({
         error: 'Contentstack credentials required',
         details: 'Provide apiKey and deliveryToken in request body or set environment variables'
       });
     }
 
-    const tempStack = contentstack.Stack(stackConfig);
+    const tempStack = contentstack.stack(stackConfig);
     
-    // Fetch entry from Contentstack
     const entry = await tempStack.ContentType(contentType).Entry(entryUid).toJSON().fetch();
     
     if (!entry) {
@@ -1304,19 +919,20 @@ app.post('/api/reindex/:contentType/:entryUid', authenticateWebhook, async (req,
     }
 
     const index = pinecone.Index(process.env.PINECONE_INDEX);
-    await reindexEntry(entry, contentType, locale, index);
+    await reindexEntryWithImageAnalysis(entry, contentType, locale, index);
 
     res.json({
       success: true,
-      message: 'Entry reindexed successfully',
+      message: 'Entry reindexed successfully with image analysis',
       entryUid,
       contentType,
       locale,
-      title: entry.title || 'Untitled'
+      title: entry.title || 'Untitled',
+      imageAnalysisEnabled: !!openai
     });
 
   } catch (error) {
-    console.error('❌ Manual reindex error:', error);
+    console.error('Manual reindex error:', error);
     res.status(500).json({
       error: 'Manual reindex failed',
       details: error.message
@@ -1324,91 +940,178 @@ app.post('/api/reindex/:contentType/:entryUid', authenticateWebhook, async (req,
   }
 });
 
-// Bulk reindex endpoint for content type
-app.post('/api/reindex-content-type/:contentType', authenticateWebhook, async (req, res) => {
+// Full sync endpoint
+app.post('/api/sync-all', authenticateWebhook, async (req, res) => {
   try {
-    const { contentType } = req.params;
     const { 
-      locale = 'en-us', 
-      limit = 100, 
-      apiKey, 
-      deliveryToken, 
-      region = 'US', 
-      environment = 'production' 
+      contentTypes = ['article', 'video', 'product', 'media'],
+      limit = 50,
+      apiKey,
+      deliveryToken,
+      region = 'US',
+      environment = 'production'
     } = req.body;
 
-    console.log(`🔄 Bulk reindex requested for content type: ${contentType}`);
+    console.log('Starting full sync with image analysis...');
+    console.log(`Target content types: ${contentTypes.join(', ')}`);
+    console.log(`Image analysis: ${openai ? 'Enabled' : 'Disabled'}`);
 
-    // Use provided credentials or fall back to environment
     const stackConfig = {
-      api_key: apiKey || process.env.CONTENTSTACK_API_KEY,
-      delivery_token: deliveryToken || process.env.CONTENTSTACK_DELIVERY_TOKEN,
+      apiKey: apiKey || process.env.CONTENTSTACK_API_KEY,
+      deliveryToken: deliveryToken || process.env.CONTENTSTACK_DELIVERY_TOKEN,
       environment: environment,
       region: getContentstackRegion(region)
     };
 
-    if (!stackConfig.api_key || !stackConfig.delivery_token) {
+    if (!stackConfig.apiKey || !stackConfig.deliveryToken) {
       return res.status(400).json({
-        error: 'Contentstack credentials required',
-        details: 'Provide apiKey and deliveryToken in request body or set environment variables'
+        error: 'Contentstack credentials required'
       });
     }
 
-    const tempStack = contentstack.Stack(stackConfig);
-
-    // Fetch entries from Contentstack
-    const query = tempStack.ContentType(contentType).Query().limit(limit);
-    const result = await query.toJSON().find();
-    
-    let entries = [];
-    if (result && Array.isArray(result)) {
-      entries = Array.isArray(result[0]) ? result[0] : result;
-    } else if (result && result.entries) {
-      entries = result.entries;
-    }
-
-    if (entries.length === 0) {
-      return res.status(404).json({
-        error: 'No entries found',
-        contentType
-      });
-    }
-
+    const tempStack = contentstack.stack(stackConfig);
     const index = pinecone.Index(process.env.PINECONE_INDEX);
-    let successCount = 0;
-    let errorCount = 0;
-    const errors = [];
 
-    for (const entry of entries) {
+    let totalProcessed = 0;
+    let totalFailed = 0;
+    let totalImagesAnalyzed = 0;
+    const results = {};
+
+    for (const contentType of contentTypes) {
       try {
-        await reindexEntry(entry, contentType, locale, index);
-        successCount++;
-        console.log(`✅ Reindexed: ${entry.uid}`);
-      } catch (error) {
-        errorCount++;
-        errors.push({
-          uid: entry.uid,
-          error: error.message
-        });
-        console.error(`❌ Failed to reindex ${entry.uid}:`, error.message);
+        console.log(`Processing content type: ${contentType}`);
+        
+        const query = tempStack.ContentType(contentType).Query().limit(limit);
+        const result = await query.toJSON().find();
+        
+        let entries = [];
+        if (result && Array.isArray(result)) {
+          entries = Array.isArray(result[0]) ? result[0] : result;
+        } else if (result && result.entries) {
+          entries = result.entries;
+        }
+
+        console.log(`Found ${entries.length} entries for ${contentType}`);
+
+        let processed = 0;
+        let failed = 0;
+        let imagesAnalyzed = 0;
+
+        for (const entry of entries) {
+          try {
+            const imageUrls = extractImageUrls(entry);
+            if (imageUrls.length > 0 && openai) {
+              imagesAnalyzed++;
+            }
+
+            await reindexEntryWithImageAnalysis(entry, contentType, entry.locale || 'en-us', index);
+            processed++;
+            
+            await new Promise(resolve => setTimeout(resolve, 200));
+            
+          } catch (entryError) {
+            console.error(`Failed to sync entry ${entry.uid}:`, entryError.message);
+            failed++;
+          }
+        }
+
+        results[contentType] = {
+          total: entries.length,
+          processed,
+          failed,
+          imagesAnalyzed
+        };
+
+        totalProcessed += processed;
+        totalFailed += failed;
+        totalImagesAnalyzed += imagesAnalyzed;
+
+        console.log(`${contentType} completed: ${processed} processed, ${failed} failed, ${imagesAnalyzed} images analyzed`);
+
+      } catch (contentTypeError) {
+        console.error(`Failed to process content type ${contentType}:`, contentTypeError.message);
+        results[contentType] = {
+          error: contentTypeError.message
+        };
       }
     }
 
     res.json({
       success: true,
-      message: 'Bulk reindex completed',
-      contentType,
-      locale,
-      totalEntries: entries.length,
-      successCount,
-      errorCount,
-      errors: errors.slice(0, 10) // Limit error details
+      message: 'Full sync with image analysis completed',
+      summary: {
+        totalProcessed,
+        totalFailed,
+        totalImagesAnalyzed,
+        imageAnalysisEnabled: !!openai,
+        contentTypesProcessed: contentTypes.length
+      },
+      results,
+      timestamp: new Date().toISOString()
     });
 
   } catch (error) {
-    console.error('❌ Bulk reindex error:', error);
+    console.error('Full sync error:', error);
     res.status(500).json({
-      error: 'Bulk reindex failed',
+      error: 'Full sync failed',
+      details: error.message
+    });
+  }
+});
+
+// Test data endpoint
+app.get('/test-data', async (req, res) => {
+  try {
+    const index = pinecone.Index(process.env.PINECONE_INDEX);
+    const stats = await index.describeIndexStats();
+    
+    res.json({
+      status: 'success',
+      indexStats: stats,
+      hasData: stats.totalVectorCount > 0,
+      imageAnalysisEnabled: !!openai
+    });
+  } catch (error) {
+    console.error('Test data error:', error);
+    res.status(500).json({
+      error: 'Failed to check index stats',
+      details: error.message
+    });
+  }
+});
+
+// Debug vectors endpoint
+app.get('/debug-vectors', async (req, res) => {
+  try {
+    const index = pinecone.Index(process.env.PINECONE_INDEX);
+    
+    const debugQuery = await index.query({
+      vector: new Array(384).fill(0),
+      topK: 10,
+      includeMetadata: true,
+    });
+    
+    const debugResults = debugQuery.matches?.map(match => ({
+      id: match.id,
+      title: match.metadata?.title,
+      type: match.metadata?.type,
+      score: match.score,
+      hasImages: !!(match.metadata?.primary_image || match.metadata?.all_images),
+      hasImageAnalysis: !!match.metadata?.image_analysis,
+      imageCount: match.metadata?.image_count || 0
+    })) || [];
+    
+    res.json({
+      status: 'success',
+      sampleVectors: debugResults,
+      totalFound: debugResults.length,
+      imageAnalysisEnabled: !!openai
+    });
+    
+  } catch (error) {
+    console.error('Debug vectors error:', error);
+    res.status(500).json({
+      error: 'Failed to debug vectors',
       details: error.message
     });
   }
@@ -1416,7 +1119,7 @@ app.post('/api/reindex-content-type/:contentType', authenticateWebhook, async (r
 
 // Error handling middleware
 app.use((error, req, res, next) => {
-  console.error('🚨 Unhandled error:', error);
+  console.error('Unhandled error:', error);
   res.status(500).json({
     error: 'Internal server error',
     details: process.env.NODE_ENV === 'development' ? error.message : undefined
@@ -1432,31 +1135,33 @@ app.use((req, res) => {
   });
 });
 
-// Export the app for Vercel
+// Export for Vercel
 export default app;
 
-// Only listen on port in development/local
+// Start server in development
 if (process.env.NODE_ENV !== 'production') {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {
-    console.log(`🚀 Server running on http://localhost:${PORT}`);
-    console.log(`📊 Health check available at: http://localhost:${PORT}/health`);
-    console.log(`🔍 Search endpoint: http://localhost:${PORT}/search`);
-    console.log(`🖼️ Image analysis endpoint: http://localhost:${PORT}/analyze-image`);
-    console.log(`🧪 Test data endpoint: http://localhost:${PORT}/test-data`);
-    console.log(`🐛 Debug vectors endpoint: http://localhost:${PORT}/debug-vectors`);
-    console.log(`🔧 Debug Contentstack endpoint: http://localhost:${PORT}/debug-contentstack/:contentType`);
-    console.log(`🔗 Webhook endpoint: http://localhost:${PORT}/api/webhook/contentstack`);
-    console.log(`🔄 Manual reindex endpoint: http://localhost:${PORT}/api/reindex/:contentType/:entryUid`);
-    console.log(`🌍 Contentstack region: ${process.env.CONTENTSTACK_REGION || 'US'}`);
-    console.log(`🤖 Features enabled:`);
+    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`Health check: http://localhost:${PORT}/health`);
+    console.log(`Search endpoint: http://localhost:${PORT}/search`);
+    console.log(`Image analysis: http://localhost:${PORT}/analyze-image`);
+    console.log(`Webhook endpoint: http://localhost:${PORT}/api/webhook/contentstack`);
+    console.log(`Full sync endpoint: http://localhost:${PORT}/api/sync-all`);
+    console.log(`Features enabled:`);
     console.log(`   - Semantic search: ✅`);
+    console.log(`   - Real-time webhook processing: ✅`);
     console.log(`   - Image analysis: ${openai ? '✅ (with gpt-4o-mini)' : '❌ (OpenAI API key not configured)'}`);
     console.log(`   - Multimodal search: ✅`);
-    console.log(`   - Debug endpoints: ✅`);
-    console.log(`   - Webhook integration: ✅`);
-    console.log(`   - Real-time sync: ✅`);
-    console.log(`   - Enhanced asset handling: ✅`);
-    console.log(`   - Dynamic Contentstack connection: ✅`);
+    console.log(`   - Auto image processing on webhook: ${openai ? '✅' : '❌'}`);
+    console.log(`Environment variables needed:`);
+    console.log(`   - COHERE_API_KEY: ${process.env.COHERE_API_KEY ? '✅' : '❌'}`);
+    console.log(`   - PINECONE_API_KEY: ${process.env.PINECONE_API_KEY ? '✅' : '❌'}`);
+    console.log(`   - PINECONE_INDEX: ${process.env.PINECONE_INDEX ? '✅' : '❌'}`);
+    console.log(`   - CONTENTSTACK_API_KEY: ${process.env.CONTENTSTACK_API_KEY ? '✅' : '❌'}`);
+    console.log(`   - CONTENTSTACK_DELIVERY_TOKEN: ${process.env.CONTENTSTACK_DELIVERY_TOKEN ? '✅' : '❌'}`);
+    console.log(`   - OPENAI_API_KEY: ${process.env.OPENAI_API_KEY ? '✅ (Image analysis enabled)' : '❌ (Image analysis disabled)'}`);
+    console.log(`   - WEBHOOK_USERNAME: ${process.env.WEBHOOK_USERNAME || 'contentstack_webhook'}`);
+    console.log(`   - WEBHOOK_PASSWORD: ${process.env.WEBHOOK_PASSWORD ? '✅' : '❌ (using default)'}`);
   });
 }
