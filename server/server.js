@@ -115,7 +115,7 @@ function mapContentTypeToDisplayType(contentTypeUid) {
   if (lowerUid.includes('prod') || lowerUid.includes('shop') || lowerUid.includes('buy')) return 'product';
   
   // Default fallback
-  return 'article';
+  return 'product';
 }
 
 // Extract content type with better mapping
@@ -125,7 +125,7 @@ function extractContentType(entryData) {
                        entryData.content_type_uid || 
                        entryData.contentType || 
                        entryData.type ||
-                       'article';
+                       'product';
   
   // Map to display type
   return mapContentTypeToDisplayType(contentTypeUid);
