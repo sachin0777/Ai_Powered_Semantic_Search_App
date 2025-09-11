@@ -236,7 +236,7 @@ const EnhancedSemanticSearch = () => {
         content: 'Lightweight running shoes designed for long-distance comfort and speed.',
         locale: 'en-us',
         updated_at: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
-        tags: [running, shoes, nike, sports],
+        tags: ['running', 'shoes', 'nike', 'sports'],
         content_type_uid: 'product'
       },
       {
