@@ -52,6 +52,85 @@ if (process.env.OPENAI_API_KEY) {
   console.log('OpenAI API key not provided - image analysis will be disabled');
 }
 
+// Content Type Mapping Function
+function mapContentTypeToDisplayType(contentTypeUid) {
+  // Map Contentstack content type UIDs to your display types
+  const contentTypeMap = {
+    // Common Contentstack content type patterns
+    'article': 'article',
+    'blog': 'article', 
+    'blog_post': 'article',
+    'news': 'article',
+    'page': 'article',
+    'post': 'article',
+    'content': 'article',
+    'text': 'article',
+    'document': 'article',
+    'story': 'article',
+    
+    'product': 'product',
+    'products': 'product',
+    'item': 'product',
+    'catalog': 'product',
+    'shop': 'product',
+    'merchandise': 'product',
+    'goods': 'product',
+    
+    'video': 'video',
+    'videos': 'video',
+    'movie': 'video',
+    'film': 'video',
+    'clip': 'video',
+    'tutorial': 'video',
+    'webinar': 'video',
+    
+    'media': 'media',
+    'image': 'media',
+    'gallery': 'media',
+    'asset': 'media',
+    'file': 'media',
+    'photo': 'media',
+    'picture': 'media'
+  };
+  
+  if (!contentTypeUid) return 'article'; // default fallback
+  
+  const lowerUid = contentTypeUid.toLowerCase();
+  
+  // Direct match
+  if (contentTypeMap[lowerUid]) {
+    return contentTypeMap[lowerUid];
+  }
+  
+  // Partial match - check if any key is contained in the UID
+  for (const [key, value] of Object.entries(contentTypeMap)) {
+    if (lowerUid.includes(key)) {
+      return value;
+    }
+  }
+  
+  // If no match found, try to infer from common patterns
+  if (lowerUid.includes('vid')) return 'video';
+  if (lowerUid.includes('img') || lowerUid.includes('pic')) return 'media';
+  if (lowerUid.includes('prod') || lowerUid.includes('shop') || lowerUid.includes('buy')) return 'product';
+  
+  // Default fallback
+  return 'article';
+}
+
+// Extract content type with better mapping
+function extractContentType(entryData) {
+  // Try different possible fields for content type
+  let contentTypeUid = entryData._content_type_uid || 
+                       entryData.content_type_uid || 
+                       entryData.contentType || 
+                       entryData.type ||
+                       'article';
+  
+  // Map to display type
+  return mapContentTypeToDisplayType(contentTypeUid);
+}
+
 // Contentstack region helper
 const getContentstackRegion = (regionCode = 'US') => {
   const regionMap = {
@@ -390,10 +469,12 @@ const authenticateWebhook = (req, res, next) => {
   }
 };
 
-// Enhanced reindex function with image analysis
-async function reindexEntryWithImageAnalysis(entryData, contentType, locale, index) {
+// Enhanced reindex function with improved content type handling
+async function reindexEntryWithImageAnalysis(entryData, originalContentType, locale, index) {
   try {
     console.log(`Processing entry with image analysis: ${entryData.uid}`);
+    console.log(`Original content type: ${originalContentType}`);
+    console.log(`Entry _content_type_uid: ${entryData._content_type_uid}`);
 
     const rawText = extractTextContent(entryData);
     const cleanText = cleanTextContent(rawText);
@@ -402,6 +483,10 @@ async function reindexEntryWithImageAnalysis(entryData, contentType, locale, ind
       console.log(`Skipping entry ${entryData.uid}: insufficient content (${cleanText.length} chars)`);
       return;
     }
+
+    // Extract and map content type properly
+    const mappedContentType = extractContentType(entryData);
+    console.log(`Mapped content type: ${mappedContentType}`);
 
     const imageUrls = extractImageUrls(entryData);
     console.log(`Found ${imageUrls.length} images for ${entryData.uid}`);
@@ -464,12 +549,14 @@ async function reindexEntryWithImageAnalysis(entryData, contentType, locale, ind
 
     const metadata = {
       title: entryData.title || 'Untitled',
-      type: contentType,
+      type: mappedContentType, // Use the mapped content type
       snippet: cleanText.substring(0, 500),
       locale: locale || 'en-us',
       tags: tags,
       date: entryData.updated_at || entryData.created_at || new Date().toISOString(),
-      content_type_uid: entryData._content_type_uid || contentType,
+      content_type_uid: entryData._content_type_uid || originalContentType || mappedContentType,
+      original_content_type: originalContentType, // Keep original for debugging
+      mapped_content_type: mappedContentType, // Keep mapped for debugging
       uid: entryData.uid,
       url: entryData.url || '',
       primary_image: imageUrls[0] || null,
@@ -484,6 +571,7 @@ async function reindexEntryWithImageAnalysis(entryData, contentType, locale, ind
       multimodal_content: imageAnalysis ? true : false
     };
 
+    // Remove null/undefined values
     Object.keys(metadata).forEach(key => {
       if (metadata[key] === null || metadata[key] === undefined) {
         delete metadata[key];
@@ -498,6 +586,7 @@ async function reindexEntryWithImageAnalysis(entryData, contentType, locale, ind
     }]);
 
     console.log(`Successfully reindexed entry with image analysis: ${entryData.uid} (${vectorId})`);
+    console.log(`Content type mapping: ${originalContentType} -> ${mappedContentType}`);
 
   } catch (error) {
     console.error(`Failed to reindex entry ${entryData.uid}:`, error.message);
@@ -505,14 +594,14 @@ async function reindexEntryWithImageAnalysis(entryData, contentType, locale, ind
   }
 }
 
-// Webhook handler functions
+// Webhook handler functions with improved content type handling
 async function handleEntryPublish(entryData, contentType, locale, index) {
-  console.log(`Publishing entry: ${entryData.uid}`);
+  console.log(`Publishing entry: ${entryData.uid} with content type: ${contentType}`);
   await reindexEntryWithImageAnalysis(entryData, contentType, locale, index);
 }
 
 async function handleEntryUpdate(entryData, contentType, locale, index) {
-  console.log(`Updating entry: ${entryData.uid}`);
+  console.log(`Updating entry: ${entryData.uid} with content type: ${contentType}`);
   await reindexEntryWithImageAnalysis(entryData, contentType, locale, index);
 }
 
@@ -549,7 +638,8 @@ app.get('/health', (req, res) => {
       multimodal_search: true,
       webhook_integration: true,
       contentstack_connected: !!Stack,
-      real_time_image_processing: !!openai
+      real_time_image_processing: !!openai,
+      content_type_mapping: true
     }
   });
 });
@@ -623,11 +713,17 @@ app.post("/search", async (req, res) => {
     const results = (searchResult.matches || []).map((item, index) => {
       const metadata = item.metadata || {};
       
+      // Ensure content type is properly mapped
+      let contentType = metadata.type || metadata.mapped_content_type || 'article';
+      if (contentType === 'unknown' || !contentType) {
+        contentType = mapContentTypeToDisplayType(metadata.content_type_uid || metadata.original_content_type);
+      }
+      
       return {
         id: item.id,
         title: metadata.title || `Result ${index + 1}`,
-        type: metadata.type || 'unknown',
-        contentType: metadata.type || 'unknown',
+        type: contentType,
+        contentType: contentType,
         snippet: metadata.snippet || metadata.description || 'No description available',
         locale: metadata.locale || 'en-us',
         tags: Array.isArray(metadata.tags) ? metadata.tags : 
@@ -637,7 +733,7 @@ app.post("/search", async (req, res) => {
         date: metadata.date || metadata.updated_at || new Date().toISOString().split('T')[0],
         lastModified: metadata.date || metadata.updated_at || new Date().toISOString().split('T')[0],
         url: metadata.url || '',
-        contentTypeUid: metadata.content_type_uid || metadata.type,
+        contentTypeUid: metadata.content_type_uid || contentType,
         originalScore: item.score,
         primary_image: metadata.primary_image,
         primaryImage: metadata.primary_image,
@@ -757,7 +853,7 @@ app.post("/analyze-image", async (req, res) => {
   }
 });
 
-// Webhook endpoint
+// Webhook endpoint with improved content type handling
 app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
   try {
     console.log('Received Contentstack webhook:', JSON.stringify(req.body, null, 2));
@@ -783,12 +879,12 @@ app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
 
     if (module === 'entry' && data.entry) {
       entryData = data.entry;
-      contentType = entryData.content_type_uid;
+      contentType = entryData._content_type_uid || entryData.content_type_uid;
       entryUid = entryData.uid;
       locale = entryData.locale || 'en-us';
-    } else if (data.uid && data.content_type_uid) {
+    } else if (data.uid && (data.content_type_uid || data._content_type_uid)) {
       entryData = data;
-      contentType = data.content_type_uid;
+      contentType = data._content_type_uid || data.content_type_uid;
       entryUid = data.uid;
       locale = data.locale || 'en-us';
     } else {
@@ -796,7 +892,7 @@ app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
         event, 
         dataKeys: Object.keys(data), 
         module,
-        hasContentTypeUid: !!data.content_type_uid,
+        hasContentTypeUid: !!(data.content_type_uid || data._content_type_uid),
         hasUid: !!data.uid
       });
       
@@ -807,6 +903,8 @@ app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
     }
 
     console.log(`Processing webhook with IMAGE ANALYSIS: ${event} for ${contentType}:${entryUid} (${locale})`);
+    console.log(`Original content type UID: ${contentType}`);
+    console.log(`Entry _content_type_uid: ${entryData._content_type_uid}`);
 
     const index = pinecone.Index(process.env.PINECONE_INDEX);
 
@@ -848,6 +946,7 @@ app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
       event,
       entryUid: entryUid || 'asset',
       contentType: contentType || 'asset',
+      mappedContentType: contentType ? mapContentTypeToDisplayType(contentType) : null,
       imageAnalysisEnabled: !!openai,
       timestamp: new Date().toISOString()
     });
@@ -869,6 +968,7 @@ app.get('/api/webhook/test', (req, res) => {
     timestamp: new Date().toISOString(),
     authentication: 'Basic Auth required',
     imageAnalysisEnabled: !!openai,
+    contentTypeMappingEnabled: true,
     supportedEvents: [
       'entry.publish',
       'entry.update', 
@@ -884,7 +984,7 @@ app.get('/api/webhook/test', (req, res) => {
   });
 });
 
-// Manual reindex endpoint with image analysis
+// Manual reindex endpoint with improved content type handling
 app.post('/api/reindex/:contentType/:entryUid', authenticateWebhook, async (req, res) => {
   try {
     const { contentType, entryUid } = req.params;
@@ -921,11 +1021,14 @@ app.post('/api/reindex/:contentType/:entryUid', authenticateWebhook, async (req,
     const index = pinecone.Index(process.env.PINECONE_INDEX);
     await reindexEntryWithImageAnalysis(entry, contentType, locale, index);
 
+    const mappedType = mapContentTypeToDisplayType(contentType);
+
     res.json({
       success: true,
       message: 'Entry reindexed successfully with image analysis',
       entryUid,
-      contentType,
+      originalContentType: contentType,
+      mappedContentType: mappedType,
       locale,
       title: entry.title || 'Untitled',
       imageAnalysisEnabled: !!openai
@@ -940,7 +1043,7 @@ app.post('/api/reindex/:contentType/:entryUid', authenticateWebhook, async (req,
   }
 });
 
-// Full sync endpoint
+// Full sync endpoint with improved content type handling
 app.post('/api/sync-all', authenticateWebhook, async (req, res) => {
   try {
     const { 
@@ -952,7 +1055,7 @@ app.post('/api/sync-all', authenticateWebhook, async (req, res) => {
       environment = 'production'
     } = req.body;
 
-    console.log('Starting full sync with image analysis...');
+    console.log('Starting full sync with image analysis and improved content type mapping...');
     console.log(`Target content types: ${contentTypes.join(', ')}`);
     console.log(`Image analysis: ${openai ? 'Enabled' : 'Disabled'}`);
 
@@ -1015,35 +1118,42 @@ app.post('/api/sync-all', authenticateWebhook, async (req, res) => {
           }
         }
 
+        const mappedType = mapContentTypeToDisplayType(contentType);
+
         results[contentType] = {
           total: entries.length,
           processed,
           failed,
-          imagesAnalyzed
+          imagesAnalyzed,
+          originalContentType: contentType,
+          mappedContentType: mappedType
         };
 
         totalProcessed += processed;
         totalFailed += failed;
         totalImagesAnalyzed += imagesAnalyzed;
 
-        console.log(`${contentType} completed: ${processed} processed, ${failed} failed, ${imagesAnalyzed} images analyzed`);
+        console.log(`${contentType} -> ${mappedType} completed: ${processed} processed, ${failed} failed, ${imagesAnalyzed} images analyzed`);
 
       } catch (contentTypeError) {
         console.error(`Failed to process content type ${contentType}:`, contentTypeError.message);
         results[contentType] = {
-          error: contentTypeError.message
+          error: contentTypeError.message,
+          originalContentType: contentType,
+          mappedContentType: mapContentTypeToDisplayType(contentType)
         };
       }
     }
 
     res.json({
       success: true,
-      message: 'Full sync with image analysis completed',
+      message: 'Full sync with image analysis and content type mapping completed',
       summary: {
         totalProcessed,
         totalFailed,
         totalImagesAnalyzed,
         imageAnalysisEnabled: !!openai,
+        contentTypeMappingEnabled: true,
         contentTypesProcessed: contentTypes.length
       },
       results,
@@ -1069,7 +1179,8 @@ app.get('/test-data', async (req, res) => {
       status: 'success',
       indexStats: stats,
       hasData: stats.totalVectorCount > 0,
-      imageAnalysisEnabled: !!openai
+      imageAnalysisEnabled: !!openai,
+      contentTypeMappingEnabled: true
     });
   } catch (error) {
     console.error('Test data error:', error);
@@ -1080,7 +1191,7 @@ app.get('/test-data', async (req, res) => {
   }
 });
 
-// Debug vectors endpoint
+// Debug vectors endpoint with content type info
 app.get('/debug-vectors', async (req, res) => {
   try {
     const index = pinecone.Index(process.env.PINECONE_INDEX);
@@ -1094,7 +1205,9 @@ app.get('/debug-vectors', async (req, res) => {
     const debugResults = debugQuery.matches?.map(match => ({
       id: match.id,
       title: match.metadata?.title,
-      type: match.metadata?.type,
+      originalType: match.metadata?.original_content_type,
+      mappedType: match.metadata?.type || match.metadata?.mapped_content_type,
+      contentTypeUid: match.metadata?.content_type_uid,
       score: match.score,
       hasImages: !!(match.metadata?.primary_image || match.metadata?.all_images),
       hasImageAnalysis: !!match.metadata?.image_analysis,
@@ -1105,7 +1218,8 @@ app.get('/debug-vectors', async (req, res) => {
       status: 'success',
       sampleVectors: debugResults,
       totalFound: debugResults.length,
-      imageAnalysisEnabled: !!openai
+      imageAnalysisEnabled: !!openai,
+      contentTypeMappingEnabled: true
     });
     
   } catch (error) {
@@ -1115,6 +1229,27 @@ app.get('/debug-vectors', async (req, res) => {
       details: error.message
     });
   }
+});
+
+// Content type mapping test endpoint
+app.get('/api/test-content-types', (req, res) => {
+  const testTypes = [
+    'article', 'blog_post', 'news', 'product', 'video', 'media',
+    'unknown_type', 'custom_article', 'my_product', 'video_tutorial'
+  ];
+  
+  const mappings = testTypes.map(type => ({
+    original: type,
+    mapped: mapContentTypeToDisplayType(type)
+  }));
+  
+  res.json({
+    status: 'success',
+    message: 'Content type mapping test',
+    mappings,
+    supportedDisplayTypes: ['article', 'product', 'video', 'media'],
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Error handling middleware
@@ -1148,12 +1283,14 @@ if (process.env.NODE_ENV !== 'production') {
     console.log(`Image analysis: http://localhost:${PORT}/analyze-image`);
     console.log(`Webhook endpoint: http://localhost:${PORT}/api/webhook/contentstack`);
     console.log(`Full sync endpoint: http://localhost:${PORT}/api/sync-all`);
+    console.log(`Content type test: http://localhost:${PORT}/api/test-content-types`);
     console.log(`Features enabled:`);
     console.log(`   - Semantic search: ✅`);
     console.log(`   - Real-time webhook processing: ✅`);
     console.log(`   - Image analysis: ${openai ? '✅ (with gpt-4o-mini)' : '❌ (OpenAI API key not configured)'}`);
     console.log(`   - Multimodal search: ✅`);
     console.log(`   - Auto image processing on webhook: ${openai ? '✅' : '❌'}`);
+    console.log(`   - Content type mapping: ✅`);
     console.log(`Environment variables needed:`);
     console.log(`   - COHERE_API_KEY: ${process.env.COHERE_API_KEY ? '✅' : '❌'}`);
     console.log(`   - PINECONE_API_KEY: ${process.env.PINECONE_API_KEY ? '✅' : '❌'}`);
