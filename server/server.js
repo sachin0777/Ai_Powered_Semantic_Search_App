@@ -93,7 +93,7 @@ function mapContentTypeToDisplayType(contentTypeUid) {
     'picture': 'media'
   };
   
-  if (!contentTypeUid) return 'article'; // default fallback
+  if (!contentTypeUid) return 'product'; // default fallback
   
   const lowerUid = contentTypeUid.toLowerCase();
   
