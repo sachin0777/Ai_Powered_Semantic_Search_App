@@ -1165,5 +1165,3 @@ if (process.env.NODE_ENV !== 'production') {
     console.log(`   - WEBHOOK_PASSWORD: ${process.env.WEBHOOK_PASSWORD ? '✅' : '❌ (using default)'}`);
   });
 }
-
-//done.
