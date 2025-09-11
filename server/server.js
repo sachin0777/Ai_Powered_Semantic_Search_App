@@ -93,7 +93,7 @@ function mapContentTypeToDisplayType(contentTypeUid) {
     'picture': 'media'
   };
   
-  if (!contentTypeUid) return 'product'; // default fallback
+  if (!contentTypeUid) return 'article'; // default fallback
   
   const lowerUid = contentTypeUid.toLowerCase();
   
@@ -112,10 +112,10 @@ function mapContentTypeToDisplayType(contentTypeUid) {
   // If no match found, try to infer from common patterns
   if (lowerUid.includes('vid')) return 'video';
   if (lowerUid.includes('img') || lowerUid.includes('pic')) return 'media';
-  if (lowerUid.includes('prod') || lowerUid.includes('shop') || lowerUid.includes('buy')) return 'product';
+  if (lowerUid.includes('prod') || lowerUid.includes('shop') || lowerUid.includes('buy')) return 'article';
   
   // Default fallback
-  return 'product';
+  return 'article';
 }
 
 // Extract content type with better mapping
@@ -125,7 +125,7 @@ function extractContentType(entryData) {
                        entryData.content_type_uid || 
                        entryData.contentType || 
                        entryData.type ||
-                       'product';
+                       'article';
   
   // Map to display type
   return mapContentTypeToDisplayType(contentTypeUid);

@@ -232,47 +232,47 @@ const EnhancedSemanticSearch = () => {
     const demoEntries = [
       {
         uid: 'demo_entry_1',
-        title: 'Getting Started with AI-Powered Search',
-        content: 'This comprehensive guide covers the fundamentals of implementing AI-powered search in your applications. Learn about semantic search, vector embeddings, and natural language processing techniques that make content discovery more intuitive and effective.',
+        title: 'Red Nike Air Zoom',
+        content: 'Lightweight running shoes designed for long-distance comfort and speed.',
         locale: 'en-us',
         updated_at: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
-        tags: ['AI', 'Search', 'Tutorial', 'Machine Learning'],
-        content_type_uid: 'article'
+        tags: [running, shoes, nike, sports],
+        content_type_uid: 'product'
       },
       {
         uid: 'demo_entry_2',
-        title: 'Best Practices for Content Management',
-        content: 'Discover industry best practices for managing digital content at scale. This article covers content strategy, workflow optimization, and the latest trends in headless CMS architecture.',
+        title: 'MacBook Air M2',
+        content: 'Ultra-thin Apple laptop with M2 chip, long battery life, and Retina display.',
         locale: 'en-us',
         updated_at: new Date(Date.now() - 172800000).toISOString(), // 2 days ago
-        tags: ['CMS', 'Content Strategy', 'Best Practices'],
-        content_type_uid: 'article'
+        tags: ['laptop', 'apple', 'macbook', 'electronics'],
+        content_type_uid: 'product'
       },
       {
         uid: 'demo_entry_3',
-        title: 'Revolutionary Red Running Shoes',
-        content: 'Experience ultimate comfort with our latest red running shoes featuring white logo design. Advanced cushioning technology meets premium materials for the perfect running experience.',
+        title: 'Sony WH-1000XM5 Headphones',
+        content: 'Wireless noise-canceling headphones with premium sound quality.',
         locale: 'en-us',
         updated_at: new Date(Date.now() - 259200000).toISOString(), // 3 days ago
-        tags: ['Shoes', 'Sports', 'Red', 'Running'],
+        tags: ['headphones', 'sony', 'audio', 'wireless'],
         content_type_uid: 'product'
       },
       {
         uid: 'demo_entry_4',
-        title: 'Sustainable Fashion: The Future of Style',
-        content: 'Explore the growing trend of sustainable fashion and its impact on the industry. Learn about eco-friendly materials, ethical manufacturing, and how brands are adapting to consumer demands for sustainability.',
+        title: 'Samsung Galaxy S23 Ultra',
+        content: 'Flagship smartphone with powerful camera and S-Pen support.',
         locale: 'en-us',
         updated_at: new Date(Date.now() - 345600000).toISOString(), // 4 days ago
-        tags: ['Fashion', 'Sustainability', 'Environment', 'Trends'],
+        tags: ['smartphone', 'samsung', 'android', 'electronics'],
         content_type_uid: 'article'
       },
       {
         uid: 'demo_entry_5',
-        title: 'Premium Blue Product Packaging Design',
-        content: 'Showcase your products with our innovative blue packaging solutions. Modern design meets functionality with these eye-catching containers that enhance brand recognition.',
+        title: 'Patagonia Puffer Jacket',
+        content: 'Warm, eco-friendly insulated jacket made from recycled materials.',
         locale: 'en-us',
         updated_at: new Date(Date.now() - 432000000).toISOString(), // 5 days ago
-        tags: ['Packaging', 'Design', 'Blue', 'Branding'],
+        tags: ['jacket', 'clothing', 'winter', 'outdoor'],
         content_type_uid: 'product'
       }
     ];
