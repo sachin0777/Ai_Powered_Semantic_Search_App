@@ -32,7 +32,7 @@
 
 | Search UI | Result Ranking |
 |-----------|----------------|
-| ![Search UI](https://dummyimage.com/600x350/000/fff&text=Search+UI) | ![Results](https://dummyimage.com/600x350/222/fff&text=Results+Ranking) |
+| ![Search UI](Screenshot 2025-09-14 235142.png) | ![Results](https://dummyimage.com/600x350/222/fff&text=Results+Ranking) |
 
 ---
 
