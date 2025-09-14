@@ -30,9 +30,11 @@
 
 ## 📸 Screenshots
 
-| Search UI | Result Ranking |
-|-----------|----------------|
-| ![Search UI](./Screenshot 2025-09-14 235142.png) | ![Results](https://dummyimage.com/600x350/222/fff&text=Results+Ranking) |
+<p align="center">
+  <img src="./your-app-ui.png" alt="App UI" width="30%"/>
+  <img src="./your-search-results.png" alt="Search Results" width="30%"/>
+  <img src="./your-contentstack-integration.png" alt="Contentstack Integration" width="30%"/>
+</p>
 
 ---
 
