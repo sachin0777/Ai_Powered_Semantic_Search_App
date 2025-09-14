@@ -50,13 +50,17 @@ npm install
 
 # 3. Start the Frontend
 cd frontend
+
 npm install
+
 npm run dev
 # Frontend runs on: http://localhost:5173
 
 # 4. Start the Backend (open new terminal)
 cd backend
+
 npm install
+
 npm run dev
 # Backend runs on: http://localhost:3000
 
@@ -70,5 +74,5 @@ PINECONE_API_KEY=your_pinecone_api_key
 
 # 6. Deploy
 # Frontend → Vercel
-# Backend → Vercel serverless / Render / AWS
+# Backend → Vercel serverless
 # Contentstack Launch → Integrate app UI inside Contentstack
