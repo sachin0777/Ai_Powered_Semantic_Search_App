@@ -31,9 +31,10 @@
 ## 📸 Screenshots
 
 <p align="center">
-  <img src="./your-app-ui.png" alt="App UI" width="30%"/>
-  <img src="./your-search-results.png" alt="Search Results" width="30%"/>
-  <img src="./your-contentstack-integration.png" alt="Contentstack Integration" width="30%"/>
+  <img src="Screenshot 2025-09-14 235142.png" alt="App UI" width="30%"/>
+  <img src="Screenshot 2025-09-14 235223.png" alt="Search Results" width="30%"/>
+  <img src="Screenshot 2025-09-14 235832.png" alt="Contentstack Integration" width="30%"/>
+   <img src="Screenshot 2025-09-14 235847.png" alt="Contentstack Integration" width="30%"/>
 </p>
 
 ---
