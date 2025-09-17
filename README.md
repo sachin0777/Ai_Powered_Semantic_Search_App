@@ -78,7 +78,7 @@ This bridges semantic understanding not just for text & images, but for **video 
 
 ---
 
-# 📸 Screenshots  
+# 📸 Screenshots  of Website
 
 <p align="center">
   <img src="Screenshot 2025-09-14 235142.png" alt="App UI" width="30%"/>
@@ -86,6 +86,15 @@ This bridges semantic understanding not just for text & images, but for **video 
   <img src="Screenshot 2025-09-14 235832.png" alt="Contentstack Integration" width="30%"/>
   <img src="Screenshot 2025-09-14 235847.png" alt="Contentstack Integration" width="30%"/>
 </p>  
+
+---
+# 📸 Screenshots  of Backend and Deployment
+
+<p align="center">
+  <img src="1.png" alt="App UI" width="30%"/>
+  <img src="2.png" alt="Search Results" width="30%"/>
+  <img src="3.png" alt="Contentstack Integration" width="30%"/>
+  </p>  
 
 ---
 
