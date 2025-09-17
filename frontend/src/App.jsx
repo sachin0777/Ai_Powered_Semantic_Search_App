@@ -196,90 +196,81 @@ const EnhancedSemanticSearch = () => {
 
   // Demo Contentstack connection simulation
   const checkContentstackConnection = async () => {
-    if (!contentstackConfig.apiKey || !contentstackConfig.deliveryToken) {
-      setConnectionStatus('disconnected');
-      setIsConnected(false);
-      return;
-    }
+  if (!contentstackConfig.apiKey || !contentstackConfig.deliveryToken) {
+    setConnectionStatus('disconnected');
+    setIsConnected(false);
+    return;
+  }
 
-    setConnectionStatus('checking');
-    setError(null);
+  setConnectionStatus('checking');
+  setError(null);
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/test-connection`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        apiKey: contentstackConfig.apiKey,
+        deliveryToken: contentstackConfig.deliveryToken,
+        managementToken: contentstackConfig.managementToken,
+        region: contentstackConfig.region,
+        environment: contentstackConfig.environment
+      })
+    });
     
-    // Simulate connection delay for realistic feel
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    const result = await response.json();
     
-    try {
-      // Always succeed for demo purposes
+    if (response.ok && result.success) {
       setConnectionStatus('connected');
       setIsConnected(true);
-      loadDemoEntries(); // Load demo entries instead
-      console.log('Demo connection successful');
-    } catch (error) {
-      // This shouldn't happen in demo mode, but keeping for safety
-      setConnectionStatus('error');
-      setIsConnected(false);
-      setError('Connection error: ' + error.message);
+      await loadRealEntries();
+      console.log('Contentstack connection successful');
+    } else {
+      throw new Error(result.error || 'Connection failed');
     }
-  };
+  } catch (error) {
+    setConnectionStatus('error');
+    setIsConnected(false);
+    setError('Connection error: ' + error.message);
+  }
+};
 
   // Load demo entries (simulated)
-  const loadDemoEntries = async () => {
-    setIsLoadingEntries(true);
+  const loadRealEntries = async () => {
+  setIsLoadingEntries(true);
+  setError(null);
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/entries`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        apiKey: contentstackConfig.apiKey,
+        deliveryToken: contentstackConfig.deliveryToken,
+        region: contentstackConfig.region,
+        environment: contentstackConfig.environment,
+        limit: 50
+      })
+    });
     
-    // Simulate loading delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    const result = await response.json();
     
-    const demoEntries = [
-      {
-        uid: 'demo_entry_1',
-        title: 'Red Nike Air Zoom',
-        content: 'Lightweight running shoes designed for long-distance comfort and speed.',
-        locale: 'en-us',
-        updated_at: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
-        tags: ['running', 'shoes', 'nike', 'sports'],
-        content_type_uid: 'product'
-      },
-      {
-        uid: 'demo_entry_2',
-        title: 'MacBook Air M2',
-        content: 'Ultra-thin Apple laptop with M2 chip, long battery life, and Retina display.',
-        locale: 'en-us',
-        updated_at: new Date(Date.now() - 172800000).toISOString(), // 2 days ago
-        tags: ['laptop', 'apple', 'macbook', 'electronics'],
-        content_type_uid: 'product'
-      },
-      {
-        uid: 'demo_entry_3',
-        title: 'Sony WH-1000XM5 Headphones',
-        content: 'Wireless noise-canceling headphones with premium sound quality.',
-        locale: 'en-us',
-        updated_at: new Date(Date.now() - 259200000).toISOString(), // 3 days ago
-        tags: ['headphones', 'sony', 'audio', 'wireless'],
-        content_type_uid: 'product'
-      },
-      {
-        uid: 'demo_entry_4',
-        title: 'Samsung Galaxy S23 Ultra',
-        content: 'Flagship smartphone with powerful camera and S-Pen support.',
-        locale: 'en-us',
-        updated_at: new Date(Date.now() - 345600000).toISOString(), // 4 days ago
-        tags: ['smartphone', 'samsung', 'android', 'electronics'],
-        content_type_uid: 'article'
-      },
-      {
-        uid: 'demo_entry_5',
-        title: 'Patagonia Puffer Jacket',
-        content: 'Warm, eco-friendly insulated jacket made from recycled materials.',
-        locale: 'en-us',
-        updated_at: new Date(Date.now() - 432000000).toISOString(), // 5 days ago
-        tags: ['jacket', 'clothing', 'winter', 'outdoor'],
-        content_type_uid: 'product'
-      }
-    ];
-    
-    setManagedEntries(demoEntries);
+    if (response.ok && result.success) {
+      setManagedEntries(result.entries || []);
+    } else {
+      throw new Error(result.error || 'Failed to load entries');
+    }
+  } catch (error) {
+    setError('Error loading entries: ' + error.message);
+    setManagedEntries([]);
+  } finally {
     setIsLoadingEntries(false);
-  };
+  }
+};
 
  // Create/Update entry (demo simulation)
   const saveEntry = async () => {

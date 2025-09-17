@@ -13,8 +13,6 @@ const requiredEnvVars = [
   'COHERE_API_KEY',
   'PINECONE_API_KEY',
   'PINECONE_INDEX',
-  'CONTENTSTACK_API_KEY',
-  'CONTENTSTACK_DELIVERY_TOKEN',
 ];
 
 for (const envVar of requiredEnvVars) {
@@ -112,7 +110,7 @@ function mapContentTypeToDisplayType(contentTypeUid) {
   // If no match found, try to infer from common patterns
   if (lowerUid.includes('vid')) return 'video';
   if (lowerUid.includes('img') || lowerUid.includes('pic')) return 'media';
-  if (lowerUid.includes('prod') || lowerUid.includes('shop') || lowerUid.includes('buy')) return 'article';
+  if (lowerUid.includes('prod') || lowerUid.includes('shop') || lowerUid.includes('buy')) return 'product';
   
   // Default fallback
   return 'article';
@@ -149,29 +147,29 @@ const getContentstackRegion = (regionCode = 'US') => {
   return regionMap[regionCode] || 'US';
 };
 
-// Initialize Contentstack
-const initializeContentstack = () => {
+// Initialize Contentstack with fallback
+const initializeContentstack = (customConfig = null) => {
   try {
-    if (!process.env.CONTENTSTACK_API_KEY || !process.env.CONTENTSTACK_DELIVERY_TOKEN) {
-      console.log('Contentstack credentials not provided in environment variables');
-      return null;
-    }
-
-    const stackConfig = {
+    const config = customConfig || {
       apiKey: process.env.CONTENTSTACK_API_KEY,
       deliveryToken: process.env.CONTENTSTACK_DELIVERY_TOKEN,
       environment: process.env.CONTENTSTACK_ENVIRONMENT || 'production',
       region: getContentstackRegion(process.env.CONTENTSTACK_REGION || 'US')
     };
 
+    if (!config.apiKey || !config.deliveryToken) {
+      console.log('Contentstack credentials not provided');
+      return null;
+    }
+
     console.log('Contentstack config:', {
-      apiKey: stackConfig.apiKey ? stackConfig.apiKey.substring(0, 8) + '...' : 'missing',
-      deliveryToken: stackConfig.deliveryToken ? stackConfig.deliveryToken.substring(0, 8) + '...' : 'missing',
-      environment: stackConfig.environment,
-      region: process.env.CONTENTSTACK_REGION || 'US'
+      apiKey: config.apiKey ? config.apiKey.substring(0, 8) + '...' : 'missing',
+      deliveryToken: config.deliveryToken ? config.deliveryToken.substring(0, 8) + '...' : 'missing',
+      environment: config.environment,
+      region: config.region
     });
 
-    const Stack = contentstack.stack(stackConfig);
+    const Stack = contentstack.stack(config);
     console.log('Contentstack Stack initialized successfully');
     return Stack;
   } catch (error) {
@@ -192,7 +190,8 @@ app.use(cors({
     'http://127.0.0.1:5173',
     'https://aipoweredsemanticsearchapp.eu-contentstackapps.com',
     'https://ai-powered-semantic-search-app-frontend-5v69zz3yt.vercel.app',
-    'https://ai-powered-semantic-search-app-fron.vercel.app'
+    'https://ai-powered-semantic-search-app-fron.vercel.app',
+    'https://neural-search-ai.vercel.app'
   ],
   credentials: true
 }));
@@ -440,35 +439,6 @@ function processImageData(results) {
   };
 }
 
-// Webhook authentication middleware
-const authenticateWebhook = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  
-  if (!authHeader || !authHeader.startsWith('Basic ')) {
-    console.log('Webhook authentication failed: No basic auth header');
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-
-  try {
-    const credentials = Buffer.from(authHeader.split(' ')[1], 'base64').toString('utf-8');
-    const [username, password] = credentials.split(':');
-
-    const expectedUsername = process.env.WEBHOOK_USERNAME || 'contentstack_webhook';
-    const expectedPassword = process.env.WEBHOOK_PASSWORD || 'your-secure-password';
-
-    if (username !== expectedUsername || password !== expectedPassword) {
-      console.log('Webhook authentication failed: Invalid credentials');
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    console.log('Webhook authentication successful');
-    next();
-  } catch (error) {
-    console.log('Webhook authentication error:', error.message);
-    return res.status(401).json({ error: 'Authentication failed' });
-  }
-};
-
 // Enhanced reindex function with improved content type handling
 async function reindexEntryWithImageAnalysis(entryData, originalContentType, locale, index) {
   try {
@@ -549,14 +519,14 @@ async function reindexEntryWithImageAnalysis(entryData, originalContentType, loc
 
     const metadata = {
       title: entryData.title || 'Untitled',
-      type: mappedContentType, // Use the mapped content type
+      type: mappedContentType,
       snippet: cleanText.substring(0, 500),
       locale: locale || 'en-us',
       tags: tags,
       date: entryData.updated_at || entryData.created_at || new Date().toISOString(),
       content_type_uid: entryData._content_type_uid || originalContentType || mappedContentType,
-      original_content_type: originalContentType, // Keep original for debugging
-      mapped_content_type: mappedContentType, // Keep mapped for debugging
+      original_content_type: originalContentType,
+      mapped_content_type: mappedContentType,
       uid: entryData.uid,
       url: entryData.url || '',
       primary_image: imageUrls[0] || null,
@@ -642,6 +612,316 @@ app.get('/health', (req, res) => {
       content_type_mapping: true
     }
   });
+});
+
+// Test Contentstack connection endpoint
+app.post('/api/test-connection', async (req, res) => {
+  try {
+    const { apiKey, deliveryToken, managementToken, region = 'US', environment = 'production' } = req.body;
+
+    if (!apiKey || !deliveryToken) {
+      return res.status(400).json({
+        success: false,
+        error: 'API key and delivery token are required'
+      });
+    }
+
+    const stackConfig = {
+      apiKey,
+      deliveryToken,
+      environment,
+      region: getContentstackRegion(region)
+    };
+
+    console.log('Testing Contentstack connection with config:', {
+      apiKey: apiKey.substring(0, 8) + '...',
+      deliveryToken: deliveryToken.substring(0, 8) + '...',
+      environment,
+      region: stackConfig.region
+    });
+
+    const testStack = initializeContentstack(stackConfig);
+    
+    if (!testStack) {
+      throw new Error('Failed to initialize Contentstack SDK');
+    }
+
+    // Test the connection by making a simple query
+    try {
+      const testQuery = testStack.ContentType().Query().limit(1);
+      const result = await testQuery.toJSON().find();
+      
+      console.log('Contentstack connection test successful');
+      return res.json({
+        success: true,
+        message: 'Connection successful',
+        region: stackConfig.region,
+        environment: stackConfig.environment
+      });
+    } catch (queryError) {
+      console.error('Contentstack query test failed:', queryError.message);
+      throw new Error(`Connection test failed: ${queryError.message}`);
+    }
+
+  } catch (error) {
+    console.error('Contentstack connection test error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Connection test failed'
+    });
+  }
+});
+
+// Load entries endpoint
+app.post('/api/entries', async (req, res) => {
+  try {
+    const { apiKey, deliveryToken, region = 'US', environment = 'production', limit = 50 } = req.body;
+
+    if (!apiKey || !deliveryToken) {
+      return res.status(400).json({
+        success: false,
+        error: 'API key and delivery token are required'
+      });
+    }
+
+    const stackConfig = {
+      apiKey,
+      deliveryToken,
+      environment,
+      region: getContentstackRegion(region)
+    };
+
+    const tempStack = initializeContentstack(stackConfig);
+    
+    if (!tempStack) {
+      throw new Error('Failed to initialize Contentstack SDK');
+    }
+
+    console.log('Loading entries from Contentstack...');
+
+    // Get all content types first
+    const contentTypesQuery = tempStack.ContentType().Query().limit(100);
+    let allEntries = [];
+
+    try {
+      const contentTypesResult = await contentTypesQuery.toJSON().find();
+      let contentTypes = [];
+      
+      if (contentTypesResult && Array.isArray(contentTypesResult)) {
+        contentTypes = Array.isArray(contentTypesResult[0]) ? contentTypesResult[0] : contentTypesResult;
+      } else if (contentTypesResult && contentTypesResult.content_types) {
+        contentTypes = contentTypesResult.content_types;
+      }
+
+      console.log(`Found ${contentTypes.length} content types`);
+
+      // Load entries from each content type
+      for (const contentType of contentTypes.slice(0, 10)) { // Limit to first 10 content types
+        try {
+          const entriesQuery = tempStack.ContentType(contentType.uid).Query().limit(Math.min(limit / contentTypes.length, 10));
+          const entriesResult = await entriesQuery.toJSON().find();
+          
+          let entries = [];
+          if (entriesResult && Array.isArray(entriesResult)) {
+            entries = Array.isArray(entriesResult[0]) ? entriesResult[0] : entriesResult;
+          } else if (entriesResult && entriesResult.entries) {
+            entries = entriesResult.entries;
+          }
+
+          const processedEntries = entries.map(entry => ({
+            uid: entry.uid,
+            title: entry.title || 'Untitled',
+            content: extractTextContent(entry).substring(0, 200),
+            content_type_uid: entry._content_type_uid || contentType.uid,
+            locale: entry.locale || 'en-us',
+            updated_at: entry.updated_at,
+            created_at: entry.created_at,
+            tags: entry.tags || [],
+            url: entry.url || ''
+          }));
+
+          allEntries = allEntries.concat(processedEntries);
+
+          await new Promise(resolve => setTimeout(resolve, 100)); // Rate limiting
+        } catch (ctError) {
+          console.error(`Failed to load entries for content type ${contentType.uid}:`, ctError.message);
+        }
+      }
+    } catch (ctError) {
+      console.error('Failed to load content types:', ctError.message);
+      // Fallback to a generic query if content types query fails
+      try {
+        const fallbackQuery = tempStack.Query().limit(limit);
+        const fallbackResult = await fallbackQuery.toJSON().find();
+        
+        if (fallbackResult && Array.isArray(fallbackResult)) {
+          allEntries = Array.isArray(fallbackResult[0]) ? fallbackResult[0] : fallbackResult;
+        }
+      } catch (fallbackError) {
+        console.error('Fallback query also failed:', fallbackError.message);
+      }
+    }
+
+    console.log(`Loaded ${allEntries.length} entries total`);
+
+    return res.json({
+      success: true,
+      entries: allEntries.slice(0, limit), // Ensure we don't exceed the limit
+      totalCount: allEntries.length,
+      region: stackConfig.region,
+      environment: stackConfig.environment
+    });
+
+  } catch (error) {
+    console.error('Load entries error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to load entries'
+    });
+  }
+});
+
+// Create entry endpoint
+app.post('/api/entries/create', async (req, res) => {
+  try {
+    const { apiKey, managementToken, region = 'US', environment = 'production', entryData } = req.body;
+
+    if (!apiKey || !managementToken) {
+      return res.status(400).json({
+        success: false,
+        error: 'API key and management token are required'
+      });
+    }
+
+    if (!entryData || !entryData.title) {
+      return res.status(400).json({
+        success: false,
+        error: 'Entry data with title is required'
+      });
+    }
+
+    // For now, return a simulated success response
+    // In a real implementation, you would use the Management API
+    console.log('Create entry request received:', {
+      contentType: entryData.content_type_uid,
+      title: entryData.title,
+      locale: entryData.locale
+    });
+
+    const mockEntry = {
+      uid: `mock_${Date.now()}`,
+      title: entryData.title,
+      content: entryData.content,
+      _content_type_uid: entryData.content_type_uid || 'article',
+      locale: entryData.locale || 'en-us',
+      tags: entryData.tags || [],
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    return res.json({
+      success: true,
+      entry: mockEntry,
+      message: 'Entry created successfully (simulated)'
+    });
+
+  } catch (error) {
+    console.error('Create entry error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to create entry'
+    });
+  }
+});
+
+// Update entry endpoint
+app.post('/api/entries/update', async (req, res) => {
+  try {
+    const { apiKey, managementToken, region = 'US', environment = 'production', entryData } = req.body;
+
+    if (!apiKey || !managementToken) {
+      return res.status(400).json({
+        success: false,
+        error: 'API key and management token are required'
+      });
+    }
+
+    if (!entryData || !entryData.uid) {
+      return res.status(400).json({
+        success: false,
+        error: 'Entry data with UID is required'
+      });
+    }
+
+    console.log('Update entry request received:', {
+      uid: entryData.uid,
+      title: entryData.title,
+      locale: entryData.locale
+    });
+
+    const mockEntry = {
+      uid: entryData.uid,
+      title: entryData.title,
+      content: entryData.content,
+      _content_type_uid: entryData.content_type_uid || 'article',
+      locale: entryData.locale || 'en-us',
+      tags: entryData.tags || [],
+      updated_at: new Date().toISOString()
+    };
+
+    return res.json({
+      success: true,
+      entry: mockEntry,
+      message: 'Entry updated successfully (simulated)'
+    });
+
+  } catch (error) {
+    console.error('Update entry error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to update entry'
+    });
+  }
+});
+
+// Delete entry endpoint
+app.post('/api/entries/delete', async (req, res) => {
+  try {
+    const { apiKey, managementToken, region = 'US', environment = 'production', entryUid, contentType } = req.body;
+
+    if (!apiKey || !managementToken) {
+      return res.status(400).json({
+        success: false,
+        error: 'API key and management token are required'
+      });
+    }
+
+    if (!entryUid) {
+      return res.status(400).json({
+        success: false,
+        error: 'Entry UID is required'
+      });
+    }
+
+    console.log('Delete entry request received:', {
+      uid: entryUid,
+      contentType: contentType
+    });
+
+    // For now, return a simulated success response
+    return res.json({
+      success: true,
+      entryUid: entryUid,
+      message: 'Entry deleted successfully (simulated)'
+    });
+
+  } catch (error) {
+    console.error('Delete entry error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to delete entry'
+    });
+  }
 });
 
 app.post("/search", async (req, res) => {
@@ -853,6 +1133,35 @@ app.post("/analyze-image", async (req, res) => {
   }
 });
 
+// Webhook authentication middleware
+const authenticateWebhook = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  
+  if (!authHeader || !authHeader.startsWith('Basic ')) {
+    console.log('Webhook authentication failed: No basic auth header');
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  try {
+    const credentials = Buffer.from(authHeader.split(' ')[1], 'base64').toString('utf-8');
+    const [username, password] = credentials.split(':');
+
+    const expectedUsername = process.env.WEBHOOK_USERNAME || 'contentstack_webhook';
+    const expectedPassword = process.env.WEBHOOK_PASSWORD || 'your-secure-password';
+
+    if (username !== expectedUsername || password !== expectedPassword) {
+      console.log('Webhook authentication failed: Invalid credentials');
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    console.log('Webhook authentication successful');
+    next();
+  } catch (error) {
+    console.log('Webhook authentication error:', error.message);
+    return res.status(401).json({ error: 'Authentication failed' });
+  }
+};
+
 // Webhook endpoint with improved content type handling
 app.post('/api/webhook/contentstack', authenticateWebhook, async (req, res) => {
   try {
@@ -1006,7 +1315,11 @@ app.post('/api/reindex/:contentType/:entryUid', authenticateWebhook, async (req,
       });
     }
 
-    const tempStack = contentstack.stack(stackConfig);
+    const tempStack = initializeContentstack(stackConfig);
+    
+    if (!tempStack) {
+      throw new Error('Failed to initialize Contentstack SDK');
+    }
     
     const entry = await tempStack.ContentType(contentType).Entry(entryUid).toJSON().fetch();
     
@@ -1072,7 +1385,12 @@ app.post('/api/sync-all', authenticateWebhook, async (req, res) => {
       });
     }
 
-    const tempStack = contentstack.stack(stackConfig);
+    const tempStack = initializeContentstack(stackConfig);
+    
+    if (!tempStack) {
+      throw new Error('Failed to initialize Contentstack SDK');
+    }
+
     const index = pinecone.Index(process.env.PINECONE_INDEX);
 
     let totalProcessed = 0;
