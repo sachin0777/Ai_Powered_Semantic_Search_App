@@ -1,5 +1,3 @@
-<div align="center">
-  <img src="https://contentstack.io/assets/blt8eb5cbf1da4d544e/logo.png" alt="Contentstack Logo" width="120"/>
   <h1>🔍 Smart Semantic Search App</h1>
   <p>
     A Contentstack Marketplace App with <b>semantic search</b> powered by OpenAI, Cohere, and Pinecone.<br/>
